@@ -1661,7 +1661,8 @@ app.post("/api/settings/ai-review", async (req, res, next) => {
         const codeBlock = typeof req.body?.codeBlock === "string" ? req.body.codeBlock : "";
         const [result] = await pool.query(
             `INSERT INTO setting_ai_review (language, code_block)
-             VALUES (?, ?)`,
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE code_block = VALUES(code_block), created_at = CURRENT_TIMESTAMP`,
             [language, codeBlock]
         );
         res.json({ success: true, id: result?.insertId || null, language });
