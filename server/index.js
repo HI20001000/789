@@ -2,7 +2,11 @@ import express from "express";
 import { createHash } from "node:crypto";
 import pool from "./lib/db.js";
 import { ensureSchema } from "./lib/ensureSchema.js";
-import { getAiReviewRulesText, getAiReviewTemplate } from "./lib/aiReviewTemplates.js";
+import {
+    clearAiReviewCaches,
+    getAiReviewRulesText,
+    getAiReviewTemplate
+} from "./lib/aiReviewTemplates.js";
 import { getDifyConfigSummary, partitionContent, requestDifyReport } from "./lib/difyClient.js";
 import { analyseSqlToReport, buildSqlReportPayload, isSqlPath } from "./lib/sqlAnalyzer.js";
 import { buildJavaSegments, isJavaPath } from "./lib/javaProcessor.js";
@@ -1647,6 +1651,7 @@ app.post("/api/settings/rules", async (req, res, next) => {
         }
 
         await connection.commit();
+        clearAiReviewCaches();
         res.json({ success: true, count: normalised.length, language });
     } catch (error) {
         await connection.rollback().catch(() => {});
@@ -1685,6 +1690,7 @@ app.post("/api/settings/ai-review", async (req, res, next) => {
              ON DUPLICATE KEY UPDATE code_block = VALUES(code_block), created_at = CURRENT_TIMESTAMP`,
             [language, codeBlock]
         );
+        clearAiReviewCaches();
         res.json({ success: true, id: result?.insertId || null, language });
     } catch (error) {
         next(error);
