@@ -1,0 +1,166 @@
+/* color palette from <https://github.com/vuejs/theme> */
+:root {
+  --vt-c-white: #ffffff;
+  --vt-c-white-soft: #f8f8f8;
+  --vt-c-white-mute: #f2f2f2;
+
+  --vt-c-black: #181818;
+  --vt-c-black-soft: #222222;
+  --vt-c-black-mute: #282828;
+
+  --vt-c-indigo: #2c3e50;
+
+  --vt-c-divider-light-1: rgba(60, 60, 60, 0.29);
+  --vt-c-divider-light-2: rgba(60, 60, 60, 0.12);
+  --vt-c-divider-dark-1: rgba(84, 84, 84, 0.65);
+  --vt-c-divider-dark-2: rgba(84, 84, 84, 0.48);
+
+  --vt-c-text-light-1: var(--vt-c-indigo);
+  --vt-c-text-light-2: rgba(60, 60, 60, 0.66);
+  --vt-c-text-dark-1: var(--vt-c-white);
+  --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
+}
+
+/* semantic color variables for this project */
+:root {
+  --color-background: var(--vt-c-white);
+  --color-background-soft: var(--vt-c-white-soft);
+  --color-background-mute: var(--vt-c-white-mute);
+
+  --color-border: var(--vt-c-divider-light-2);
+  --color-border-hover: var(--vt-c-divider-light-1);
+
+  --color-heading: var(--vt-c-text-light-1);
+  --color-text: var(--vt-c-text-light-1);
+
+  --section-gap: 160px;
+}
+
+:root {
+  --panel-surface: #ffffff;
+  --panel-surface-alt: #f8fafc;
+  --panel-border: #e2e8f0;
+  --panel-border-strong: #cbd5f5;
+  --panel-divider: rgba(148, 163, 184, 0.35);
+  --panel-heading: #0f172a;
+  --panel-muted: #64748b;
+  --panel-accent: #2563eb;
+  --panel-accent-soft: rgba(37, 99, 235, 0.12);
+  --tree-row-hover: rgba(148, 163, 184, 0.18);
+  --tree-row-active: rgba(59, 130, 246, 0.18);
+  --tree-text: #1f2937;
+  --tree-icon: #475569;
+  --tree-connector: rgba(148, 163, 184, 0.4);
+  --tree-badge-text: #1f2937;
+  --tree-badge-idle: rgba(148, 163, 184, 0.24);
+  --tree-badge-processing: rgba(234, 179, 8, 0.35);
+  --tree-badge-ready: rgba(34, 197, 94, 0.28);
+  --tree-badge-error: rgba(239, 68, 68, 0.32);
+  --scrollbar-track: #e2e8f0;
+  --scrollbar-thumb: #cbd5f5;
+  --scrollbar-thumb-hover: #93c5fd;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: var(--vt-c-black);
+    --color-background-soft: var(--vt-c-black-soft);
+    --color-background-mute: var(--vt-c-black-mute);
+
+    --color-border: var(--vt-c-divider-dark-2);
+    --color-border-hover: var(--vt-c-divider-dark-1);
+
+    --color-heading: var(--vt-c-text-dark-1);
+    --color-text: var(--vt-c-text-dark-2);
+    --panel-surface: #1f2024;
+    --panel-surface-alt: #191a1e;
+    --panel-border: #2c2d33;
+    --panel-border-strong: #3a3b43;
+    --panel-divider: rgba(82, 82, 91, 0.32);
+    --panel-heading: #f4f4f5;
+    --panel-muted: #a1a1aa;
+    --panel-accent: #a1a1aa;
+    --panel-accent-soft: rgba(161, 161, 170, 0.22);
+    --tree-row-hover: rgba(82, 82, 91, 0.18);
+    --tree-row-active: rgba(113, 113, 122, 0.32);
+    --tree-text: #f4f4f5;
+    --tree-icon: #d4d4d8;
+    --tree-connector: rgba(82, 82, 91, 0.28);
+    --tree-badge-text: #e4e4e7;
+    --tree-badge-idle: rgba(82, 82, 91, 0.24);
+    --tree-badge-processing: rgba(234, 179, 8, 0.3);
+    --tree-badge-ready: rgba(34, 197, 94, 0.28);
+    --tree-badge-error: rgba(239, 68, 68, 0.32);
+    --scrollbar-track: #111113;
+    --scrollbar-thumb: #3b3b44;
+    --scrollbar-thumb-hover: #4b4b55;
+  }
+}
+
+:root {
+  --scrollbar-size: 14px;
+}
+
+.themed-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.themed-scrollbar::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+.themed-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+.themed-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: calc(var(--scrollbar-size) / 4) solid var(--scrollbar-track);
+}
+
+.themed-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.themed-scrollbar::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-background);
+  transition:
+    color 0.5s,
+    background-color 0.5s;
+  line-height: 1.6;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  font-size: 15px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
