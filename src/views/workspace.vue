@@ -4344,6 +4344,15 @@ function closeChatWindow() {
 }
 
 function toggleChatWindow() {
+    if (!isProjectToolActive.value) {
+        const message = "請先啟用「專案列表」後再使用 Chat AI。";
+        if (typeof safeAlertFail === "function") {
+            safeAlertFail(message);
+        } else {
+            alert(message);
+        }
+        return;
+    }
     if (isChatWindowOpen.value) return;
     if (!isChatToggleDisabled.value) {
         openChatWindow();
@@ -4572,6 +4581,27 @@ onBeforeUnmount(() => {
                             d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm8-3.5c0-.5-.04-.99-.1-1.47l1.74-1.32a1 1 0 0 0 .24-1.3l-1.65-2.86a1 1 0 0 0-1.25-.43l-2.05.83a7.4 7.4 0 0 0-2.55-1.48L13.2 1.8A1 1 0 0 0 12.2 1h-3.4a1 1 0 0 0-1 .8l-.38 2.19a7.4 7.4 0 0 0-2.55 1.48l-2.05-.83a1 1 0 0 0-1.25.43L0 7.73a1 1 0 0 0 .24 1.3L1.98 10.35a8.4 8.4 0 0 0 0 2.3L.24 13.98a1 1 0 0 0-.24 1.3l1.65 2.86c.26.45.81.65 1.25.43l2.05-.83c.76.62 1.6 1.12 2.55 1.48l.38 2.19a1 1 0 0 0 1 .8h3.4a1 1 0 0 0 1-.8l.38-2.19a7.4 7.4 0 0 0 2.55-1.48l2.05.83c.44.22.99.02 1.25-.43l1.65-2.86a1 1 0 0 0-.24-1.3L19.9 11.5c.06-.48.1-.97.1-1.5Z"
                             fill="currentColor"
                         />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    class="toolColumn_btn toolColumn_btn--setting"
+                    :class="{ active: isSettingsViewActive }"
+                    @click="toggleSettingsView"
+                    :aria-pressed="isSettingsViewActive"
+                    title="Setting"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <!-- background stays the same size -->
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
+
+                        <!-- scale the chat bubble up slightly around center (12,12) -->
+                        <g transform="translate(12 12) scale(1.12) translate(-12 -12)">
+                            <path
+                                d="M8.5 8h7c.83 0 1.5.67 1.5 1.5v3c0 .83-.67 1.5-1.5 1.5h-.94l-1.8 1.88c-.31.33-.76.12-.76-.32V14.5h-3.5c-.83 0-1.5-.67-1.5-1.5v-3C7 8.67 7.67 8 8.5 8Z"
+                                fill="currentColor"
+                            />
+                        </g>
                     </svg>
                 </button>
             </nav>
