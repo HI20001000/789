@@ -56,6 +56,36 @@ async function ensureColumn({ info, error }, table, columnDefinition) {
     }
 }
 
+async function indexExists(table, indexName) {
+    const [rows] = await pool.query(
+        `SELECT COUNT(*) AS count
+         FROM information_schema.statistics
+         WHERE table_schema = DATABASE()
+           AND table_name = ?
+           AND index_name = ?`,
+        [table, indexName]
+    );
+    return Number(rows?.[0]?.count || 0) > 0;
+}
+
+async function ensureUniqueIndex({ info, error }, table, indexName, definition) {
+    if (await indexExists(table, indexName)) {
+        info(`[schema] Index ${table}.${indexName} already exists, skipping.`);
+        return;
+    }
+
+    const statement = `ALTER TABLE ${table} ADD CONSTRAINT ${indexName} UNIQUE ${definition}`;
+    const preview = formatStatement(statement);
+    info(`[schema] Executing: ${preview}`);
+    try {
+        await pool.query(statement);
+        info(`[schema] Success: ${preview}`);
+    } catch (err) {
+        error(`[schema] Failed: ${preview}`, err);
+        throw err;
+    }
+}
+
 function formatStatement(statement) {
     const singleLine = statement.replace(/\s+/g, " ").trim();
     if (singleLine.length <= 120) {
@@ -98,4 +128,11 @@ export async function ensureSchema({ logger } = {}) {
     for (const definition of reportColumnDefinitions) {
         await ensureColumn({ info, error }, "reports", definition);
     }
+
+    await ensureUniqueIndex(
+        { info, error },
+        "setting_ai_review",
+        "uniq_setting_ai_review_language",
+        "(language)"
+    );
 }
