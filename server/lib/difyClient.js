@@ -564,8 +564,79 @@ function normaliseSegmentEntry(segment, index, total) {
     return entry;
 }
 
-function buildPrompt({ segmentText, projectName, filePath, chunkIndex, chunkTotal, selection, location }) {
+function renderTemplate(template, replacements) {
+    if (typeof template !== "string" || !template.trim()) {
+        return "";
+    }
+    return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, token) => {
+        const key = typeof token === "string" ? token.trim() : "";
+        if (!key) return "";
+        const value = replacements[key];
+        if (value === null || value === undefined) return "";
+        if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+        return String(value);
+    });
+}
+
+function buildPrompt({
+    segmentText,
+    projectName,
+    filePath,
+    chunkIndex,
+    chunkTotal,
+    selection,
+    location,
+    templateText,
+    rulesText,
+    selectionRaw
+}) {
     const issueContext = location && typeof location === "object" ? location.issueContext : null;
+    if (typeof templateText === "string" && templateText.trim()) {
+        const startLine = normaliseChunkInteger(location?.startLine ?? location?.line);
+        const endLine = normaliseChunkInteger(location?.endLine ?? startLine);
+        const startColumn = normaliseChunkInteger(location?.startColumn ?? location?.column);
+        const endColumn = normaliseChunkInteger(location?.endColumn);
+        const lineLabel =
+            startLine
+                ? endLine && endLine !== startLine
+                    ? `第 ${startLine}-${endLine} 行`
+                    : `第 ${startLine} 行`
+                : "";
+        const selectionCode =
+            typeof selectionRaw?.code === "string"
+                ? selectionRaw.code
+                : typeof selectionRaw?.text === "string"
+                  ? selectionRaw.text
+                  : "";
+
+        const replacements = {
+            project_name: projectName || "",
+            file_path: filePath,
+            chunk_index: chunkIndex,
+            chunk_total: chunkTotal,
+            chunk_start_line: startLine ?? "",
+            chunk_end_line: endLine ?? "",
+            chunk_start_column: startColumn ?? "",
+            chunk_end_column: endColumn ?? "",
+            line: lineLabel,
+            code_location: location?.codeLocationLabel || describeSegmentLocation(location) || "",
+            selection_start_line: selection?.startLine ?? "",
+            selection_end_line: selection?.endLine ?? "",
+            selection_start_column: selection?.startColumn ?? "",
+            selection_end_column: selection?.endColumn ?? "",
+            selection_line_count: selection?.lineCount ?? "",
+            selection_label: selection?.label ?? "",
+            selection_code: selectionCode,
+            rules: typeof rulesText === "string" ? rulesText : "",
+            code: typeof segmentText === "string" ? segmentText : "",
+            chunk_code: typeof segmentText === "string" ? segmentText : "",
+            segment_text: typeof segmentText === "string" ? segmentText : "",
+            content: typeof segmentText === "string" ? segmentText : ""
+        };
+
+        return renderTemplate(templateText, replacements);
+    }
+
     if (location && location.kind === "static_issue") {
         const context = issueContext && typeof issueContext === "object" ? issueContext : {};
         const totalIssues = Number(context.totalIssues);
@@ -690,7 +761,10 @@ export async function requestDifyReport({
     segments: presetSegments,
     files,
     selection,
-    conversationId: initialConversationId
+    conversationId: initialConversationId,
+    language,
+    loadAiReviewTemplate,
+    loadAiReviewRules
 }) {
     assertConfig();
     const rawSegments = Array.isArray(presetSegments) && presetSegments.length
@@ -707,6 +781,10 @@ export async function requestDifyReport({
     const fetchImpl = await resolveFetch();
     const fileAttachments = Array.isArray(files) ? files : [];
     const selectionMeta = normaliseSelectionMeta(selection);
+    const resolvedLanguage = typeof language === "string" && language.trim() ? language.trim() : "";
+    let cachedTemplate = undefined;
+    let cachedRulesText = undefined;
+    let templateHasRulesPlaceholder = false;
     const totalSegments = normalisedSegments.length || 1;
     for (let index = 0; index < normalisedSegments.length; index += 1) {
         const segmentMeta = normalisedSegments[index];
@@ -716,6 +794,15 @@ export async function requestDifyReport({
         if (!resolvedUserId) {
             throw new Error("Dify user identifier is required; set DIFY_USER_ID or pass userId");
         }
+        if (cachedTemplate === undefined && typeof loadAiReviewTemplate === "function") {
+            cachedTemplate = await loadAiReviewTemplate(resolvedLanguage);
+            templateHasRulesPlaceholder = /{{\s*rules\s*}}/i.test(cachedTemplate || "");
+        }
+
+        if (templateHasRulesPlaceholder && cachedRulesText === undefined && typeof loadAiReviewRules === "function") {
+            cachedRulesText = await loadAiReviewRules(resolvedLanguage);
+        }
+
         const body = {
             inputs: {
                 project_name: projectName || "",
@@ -730,7 +817,10 @@ export async function requestDifyReport({
                 chunkIndex,
                 chunkTotal: totalSegments,
                 selection: selectionMeta,
-                location: segmentMeta
+                location: segmentMeta,
+                templateText: cachedTemplate,
+                rulesText: cachedRulesText,
+                selectionRaw: selection
             }),
             response_mode: responseMode,
             conversation_id: conversationId,
