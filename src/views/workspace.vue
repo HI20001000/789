@@ -4344,15 +4344,6 @@ function closeChatWindow() {
 }
 
 function toggleChatWindow() {
-    if (!isProjectToolActive.value) {
-        const message = "請先啟用「專案列表」後再使用 Chat AI。";
-        if (typeof safeAlertFail === "function") {
-            safeAlertFail(message);
-        } else {
-            alert(message);
-        }
-        return;
-    }
     if (isChatWindowOpen.value) return;
     if (!isChatToggleDisabled.value) {
         openChatWindow();
@@ -4521,11 +4512,8 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
-        <div
-            class="mainContent themed-scrollbar"
-            :class="{ 'mainContent--settings': isSettingsViewActive }"
-            ref="mainContentRef"
-        >
+        <div class="mainContent themed-scrollbar" :class="{ 'mainContent--settings': isSettingsViewActive }"
+            ref="mainContentRef">
             <nav class="toolColumn">
                 <button type="button" class="toolColumn_btn" :class="{ active: isProjectToolActive }"
                     @click="toggleProjectTool" :aria-pressed="isProjectToolActive" title="專案列表">
@@ -4561,37 +4549,6 @@ onBeforeUnmount(() => {
                     :disabled="isChatToggleDisabled" @click="toggleChatWindow" :aria-pressed="isChatWindowOpen"
                     title="Chat AI">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
-                        <path
-                            d="M8.5 8h7c.83 0 1.5.67 1.5 1.5v3c0 .83-.67 1.5-1.5 1.5h-.94l-1.8 1.88c-.31.33-.76.12-.76-.32V14.5h-3.5c-.83 0-1.5-.67-1.5-1.5v-3C7 8.67 7.67 8 8.5 8Z"
-                            fill="currentColor" />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    class="toolColumn_btn toolColumn_btn--setting"
-                    :class="{ active: isSettingsViewActive }"
-                    @click="toggleSettingsView"
-                    :aria-pressed="isSettingsViewActive"
-                    title="Setting"
-                >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
-                        <path
-                            d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm8-3.5c0-.5-.04-.99-.1-1.47l1.74-1.32a1 1 0 0 0 .24-1.3l-1.65-2.86a1 1 0 0 0-1.25-.43l-2.05.83a7.4 7.4 0 0 0-2.55-1.48L13.2 1.8A1 1 0 0 0 12.2 1h-3.4a1 1 0 0 0-1 .8l-.38 2.19a7.4 7.4 0 0 0-2.55 1.48l-2.05-.83a1 1 0 0 0-1.25.43L0 7.73a1 1 0 0 0 .24 1.3L1.98 10.35a8.4 8.4 0 0 0 0 2.3L.24 13.98a1 1 0 0 0-.24 1.3l1.65 2.86c.26.45.81.65 1.25.43l2.05-.83c.76.62 1.6 1.12 2.55 1.48l.38 2.19a1 1 0 0 0 1 .8h3.4a1 1 0 0 0 1-.8l.38-2.19a7.4 7.4 0 0 0 2.55-1.48l2.05.83c.44.22.99.02 1.25-.43l1.65-2.86a1 1 0 0 0-.24-1.3L19.9 11.5c.06-.48.1-.97.1-1.5Z"
-                            fill="currentColor"
-                        />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    class="toolColumn_btn toolColumn_btn--setting"
-                    :class="{ active: isSettingsViewActive }"
-                    @click="toggleSettingsView"
-                    :aria-pressed="isSettingsViewActive"
-                    title="Setting"
-                >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
                         <!-- background stays the same size -->
                         <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
 
@@ -4599,37 +4556,24 @@ onBeforeUnmount(() => {
                         <g transform="translate(12 12) scale(1.12) translate(-12 -12)">
                             <path
                                 d="M8.5 8h7c.83 0 1.5.67 1.5 1.5v3c0 .83-.67 1.5-1.5 1.5h-.94l-1.8 1.88c-.31.33-.76.12-.76-.32V14.5h-3.5c-.83 0-1.5-.67-1.5-1.5v-3C7 8.67 7.67 8 8.5 8Z"
-                                fill="currentColor"
-                            />
+                                fill="currentColor" />
                         </g>
                     </svg>
                 </button>
-                <button
-                    type="button"
-                    class="toolColumn_btn toolColumn_btn--setting"
-                    :class="{ active: isSettingsViewActive }"
-                    @click="toggleSettingsView"
-                    :aria-pressed="isSettingsViewActive"
-                    title="Setting"
-                >
+                <button type="button" class="toolColumn_btn toolColumn_btn--setting"
+                    :class="{ active: isSettingsViewActive }" @click="toggleSettingsView"
+                    :aria-pressed="isSettingsViewActive" title="Setting">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
                         <path
-                            fill="currentColor"
-                            d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a6.63 6.63 0 0 0-1.6-.94L14.5 2h-5l-.36 2.19c-.58.24-1.12.56-1.6.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.07.63-.07.94s.02.63.07.94l-2.03 1.58 1.92 3.32 2.39-.96c.49.38 1.02.7 1.6.94L9.5 22h5l.36-2.19c.58-.24 1.12-.56 1.6-.94l2.39.96 1.92-3.32-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"
-                        />
+                            d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm8-3.5c0-.5-.04-.99-.1-1.47l1.74-1.32a1 1 0 0 0 .24-1.3l-1.65-2.86a1 1 0 0 0-1.25-.43l-2.05.83a7.4 7.4 0 0 0-2.55-1.48L13.2 1.8A1 1 0 0 0 12.2 1h-3.4a1 1 0 0 0-1 .8l-.38 2.19a7.4 7.4 0 0 0-2.55 1.48l-2.05-.83a1 1 0 0 0-1.25.43L0 7.73a1 1 0 0 0 .24 1.3L1.98 10.35a8.4 8.4 0 0 0 0 2.3L.24 13.98a1 1 0 0 0-.24 1.3l1.65 2.86c.26.45.81.65 1.25.43l2.05-.83c.76.62 1.6 1.12 2.55 1.48l.38 2.19a1 1 0 0 0 1 .8h3.4a1 1 0 0 0 1-.8l.38-2.19a7.4 7.4 0 0 0 2.55-1.48l2.05.83c.44.22.99.02 1.25-.43l1.65-2.86a1 1 0 0 0-.24-1.3L19.9 11.5c.06-.48.1-.97.1-1.5Z"
+                            fill="currentColor" />
                     </svg>
                 </button>
             </nav>
-            <PanelRail
-                v-if="!isSettingsViewActive"
-                :style-width="middlePaneStyle"
-                :mode="panelMode"
-                :projects="projects"
-                :selected-project-id="selectedProjectId"
-                :on-select-project="handleSelectProject"
-                :on-delete-project="deleteProject"
-                :is-tree-collapsed="isTreeCollapsed"
+            <PanelRail v-if="!isSettingsViewActive" :style-width="middlePaneStyle" :mode="panelMode"
+                :projects="projects" :selected-project-id="selectedProjectId" :on-select-project="handleSelectProject"
+                :on-delete-project="deleteProject" :is-tree-collapsed="isTreeCollapsed"
                 :is-report-tree-collapsed="isReportTreeCollapsed"
                 :show-content="isProjectToolActive || isReportToolActive || isPreviewToolActive" :tree="tree"
                 :active-tree-path="activeTreePath" :is-loading-tree="isLoadingTree" :open-node="openNode"
@@ -4663,24 +4607,15 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="settingsTabs" role="tablist" aria-label="設定分頁">
-                            <button
-                                type="button"
-                                class="settingsTab"
-                                :class="{ active: activeSettingTab === 'rules' }"
-                                @click="activeSettingTab = 'rules'"
-                                role="tab"
-                                :aria-selected="activeSettingTab === 'rules'"
-                            >
+                            <button type="button" class="settingsTab" :class="{ active: activeSettingTab === 'rules' }"
+                                @click="activeSettingTab = 'rules'" role="tab"
+                                :aria-selected="activeSettingTab === 'rules'">
                                 規則引擎
                             </button>
-                            <button
-                                type="button"
-                                class="settingsTab"
+                            <button type="button" class="settingsTab"
                                 :class="{ active: activeSettingTab === 'ai-review' }"
-                                @click="activeSettingTab = 'ai-review'"
-                                role="tab"
-                                :aria-selected="activeSettingTab === 'ai-review'"
-                            >
+                                @click="activeSettingTab = 'ai-review'" role="tab"
+                                :aria-selected="activeSettingTab === 'ai-review'">
                                 AI 審查
                             </button>
                         </div>
@@ -4695,20 +4630,12 @@ onBeforeUnmount(() => {
                                         <p class="settingsStatus success" v-else-if="ruleSettingsState.message">
                                             {{ ruleSettingsState.message }}
                                         </p>
-                                        <button
-                                            type="button"
-                                            class="btn outline"
-                                            @click="addRuleRow"
-                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving"
-                                        >
+                                        <button type="button" class="btn outline" @click="addRuleRow"
+                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving">
                                             新增規則
                                         </button>
-                                        <button
-                                            type="button"
-                                            class="btn"
-                                            @click="handleSaveRules"
-                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading"
-                                        >
+                                        <button type="button" class="btn" @click="handleSaveRules"
+                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading">
                                             {{ ruleSettingsState.saving ? "保存中..." : "保存規則" }}
                                         </button>
                                     </div>
@@ -4721,29 +4648,16 @@ onBeforeUnmount(() => {
                                             <div class="ruleCell" role="columnheader">風險指標</div>
                                             <div class="ruleCell" role="columnheader">操作</div>
                                         </div>
-                                        <div
-                                            v-for="(rule, index) in activeRuleSettings"
-                                            :key="rule.localId || `rule-${index}`"
-                                            class="ruleRow"
-                                            role="row"
-                                        >
+                                        <div v-for="(rule, index) in activeRuleSettings"
+                                            :key="rule.localId || `rule-${index}`" class="ruleRow" role="row">
                                             <div class="ruleCell" role="cell">
-                                                <input
-                                                    v-model="rule.ruleId"
-                                                    type="text"
-                                                    class="ruleInput"
-                                                    :aria-label="`規則 ${index + 1} ID`"
-                                                    placeholder="R-001"
-                                                />
+                                                <input v-model="rule.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} ID`" placeholder="R-001" />
                                             </div>
                                             <div class="ruleCell" role="cell">
-                                                <input
-                                                    v-model="rule.description"
-                                                    type="text"
-                                                    class="ruleInput"
+                                                <input v-model="rule.description" type="text" class="ruleInput"
                                                     :aria-label="`規則 ${index + 1} 描述`"
-                                                    :placeholder="ruleDescriptionPlaceholder"
-                                                />
+                                                    :placeholder="ruleDescriptionPlaceholder" />
                                             </div>
                                             <div class="ruleCell" role="cell">
                                                 <label class="toggle">
@@ -4752,21 +4666,13 @@ onBeforeUnmount(() => {
                                                 </label>
                                             </div>
                                             <div class="ruleCell" role="cell">
-                                                <input
-                                                    v-model="rule.riskIndicator"
-                                                    type="text"
-                                                    class="ruleInput"
+                                                <input v-model="rule.riskIndicator" type="text" class="ruleInput"
                                                     :aria-label="`規則 ${index + 1} 風險指標`"
-                                                    :placeholder="riskIndicatorPlaceholder"
-                                                />
+                                                    :placeholder="riskIndicatorPlaceholder" />
                                             </div>
                                             <div class="ruleCell ruleCell--actions" role="cell">
-                                                <button
-                                                    type="button"
-                                                    class="btn ghost"
-                                                    @click="removeRuleRow(index)"
-                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving"
-                                                >
+                                                <button type="button" class="btn ghost" @click="removeRuleRow(index)"
+                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving">
                                                     刪除
                                                 </button>
                                             </div>
@@ -4778,26 +4684,17 @@ onBeforeUnmount(() => {
                             <template v-else>
                                 <div class="settingsCard">
                                     <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
-                                    <textarea
-                                        id="aiReviewContent"
-                                        v-model="activeAiReviewContent"
-                                        class="aiReviewInput"
-                                        rows="8"
-                                        :placeholder="aiReviewPlaceholder"
-                                        :disabled="aiReviewState.loading"
-                                    ></textarea>
+                                    <textarea id="aiReviewContent" v-model="activeAiReviewContent" class="aiReviewInput"
+                                        rows="8" :placeholder="aiReviewPlaceholder"
+                                        :disabled="aiReviewState.loading"></textarea>
 
                                     <div class="settingsActions">
                                         <p class="settingsStatus" v-if="aiReviewState.loading">設定載入中...</p>
                                         <p class="settingsStatus success" v-else-if="aiReviewState.message">
                                             {{ aiReviewState.message }}
                                         </p>
-                                        <button
-                                            type="button"
-                                            class="btn"
-                                            @click="handleSaveAiReviewSetting"
-                                            :disabled="aiReviewState.saving || aiReviewState.loading"
-                                        >
+                                        <button type="button" class="btn" @click="handleSaveAiReviewSetting"
+                                            :disabled="aiReviewState.saving || aiReviewState.loading">
                                             {{ aiReviewState.saving ? "保存中..." : "保存 AI 設定" }}
                                         </button>
                                     </div>
@@ -4823,7 +4720,7 @@ onBeforeUnmount(() => {
                                     <h3 class="reportTitle">{{ activeReport.project.name }} / {{ activeReport.path }}
                                     </h3>
                                     <p class="reportViewerTimestamp">更新於 {{ activeReport.state.updatedAtDisplay || '-'
-                                    }}</p>
+                                        }}</p>
                                 </div>
                                 <div v-if="activeReport.state.status === 'error'" class="reportErrorPanel">
                                     <p class="reportErrorText">生成失敗：{{ activeReport.state.error || '未知原因' }}</p>
@@ -4868,7 +4765,7 @@ onBeforeUnmount(() => {
                                             <div class="reportSummaryCard reportSummaryCard--total">
                                                 <span class="reportSummaryLabel">問題</span>
                                                 <span class="reportSummaryValue">{{ activeReportTotalIssuesDisplay
-                                                }}</span>
+                                                    }}</span>
                                             </div>
                                             <div v-if="activeReportSummaryText"
                                                 class="reportSummaryCard reportSummaryCard--span">
@@ -4963,7 +4860,7 @@ onBeforeUnmount(() => {
                                                                 <span v-if="segment.startLine">
                                                                     （第 {{ segment.startLine }} 行起
                                                                     <span v-if="segment.endLine">，至第 {{ segment.endLine
-                                                                    }} 行止</span>
+                                                                        }} 行止</span>
                                                                     ）
                                                                 </span>
                                                             </summary>
@@ -5172,23 +5069,11 @@ onBeforeUnmount(() => {
         </div>
 
         <Teleport to="body">
-            <ChatAiWindow
-                :visible="isChatWindowOpen && !isSettingsViewActive"
-                :floating-style="chatWindowStyle"
-                :context-items="contextItems"
-                :messages="messages"
-                :loading="isProcessing"
-                :disabled="isChatLocked"
-                :connection="connection"
-                @add-active="handleAddActiveContext"
-                @add-selection="handleAddSelectionContext"
-                @clear-context="clearContext"
-                @remove-context="removeContext"
-                @send-message="handleSendMessage"
-                @close="closeChatWindow"
-                @drag-start="startChatDrag"
-                @resize-start="startChatResize"
-            />
+            <ChatAiWindow :visible="isChatWindowOpen && !isSettingsViewActive" :floating-style="chatWindowStyle"
+                :context-items="contextItems" :messages="messages" :loading="isProcessing" :disabled="isChatLocked"
+                :connection="connection" @add-active="handleAddActiveContext" @add-selection="handleAddSelectionContext"
+                @clear-context="clearContext" @remove-context="removeContext" @send-message="handleSendMessage"
+                @close="closeChatWindow" @drag-start="startChatDrag" @resize-start="startChatResize" />
         </Teleport>
 
         <div v-if="showUploadModal" class="modalBackdrop" @click.self="showUploadModal = false">
@@ -5653,19 +5538,24 @@ body,
         margin-top: 0;
         margin-left: auto;
     }
+
     .settingsHeader {
         grid-template-columns: 1fr;
         align-items: flex-start;
     }
+
     .settingsClose {
         justify-self: start;
     }
+
     .ruleRow {
         grid-template-columns: 1fr;
     }
+
     .ruleCell--actions {
         justify-content: flex-start;
     }
+
     .workSpace {
         width: 100%;
         flex: 1 1 auto;
