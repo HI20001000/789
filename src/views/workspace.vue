@@ -2208,6 +2208,50 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
+function resolveSeverityInfo(detail, issue) {
+    const candidates = [];
+    const push = (value) => {
+        if (typeof value !== "string") return;
+        const trimmed = value.trim();
+        if (!trimmed) return;
+        candidates.push(trimmed);
+    };
+
+    const pushList = (list) => {
+        if (!Array.isArray(list)) return;
+        list.forEach((entry) => push(entry));
+    };
+
+    if (detail && typeof detail === "object") {
+        push(detail.severityLabel);
+        push(detail.severity_label);
+        push(detail.severity);
+        pushList(detail.severityLevels);
+        pushList(detail.severity_levels);
+    }
+
+    if (issue && typeof issue === "object") {
+        push(issue.severityLabel);
+        push(issue.severity_label);
+        push(issue.severity);
+        pushList(issue.severityLevels);
+        pushList(issue.severity_levels);
+    }
+
+    const label = candidates[0] || "未標示";
+    const upper = label.toUpperCase();
+    let severityClass = detail?.severityClass || issue?.severityClass || "info";
+    if (!label || upper === "未標示") {
+        severityClass = "muted";
+    } else if (upper.includes("CRIT") || upper.includes("ERR")) {
+        severityClass = "error";
+    } else if (upper.includes("WARN")) {
+        severityClass = "warn";
+    }
+
+    return { label, severityClass };
+}
+
 
 function buildIssueMetaLine(type, keySource, issues, isOrphan = false) {
     const label = type === "fix" ? "Fix" : "Issues";
@@ -2335,14 +2379,12 @@ function buildIssueDetailsHtml(issues, isOrphan = false) {
             if (detail?.ruleId) {
                 badges.push(`<span class="reportIssueInlineRule">${escapeHtml(detail.ruleId)}</span>`);
             }
-            if (detail?.severityLabel) {
-                const severityClass = detail.severityClass || "info";
-                badges.push(
-                    `<span class="reportIssueInlineSeverity reportIssueInlineSeverity--${severityClass}">${escapeHtml(
-                        detail.severityLabel
-                    )}</span>`
-                );
-            }
+            const { label: severityLabel, severityClass } = resolveSeverityInfo(detail, issue);
+            badges.push(
+                `<span class="reportIssueInlineSeverity reportIssueInlineSeverity--${severityClass}">${escapeHtml(
+                    severityLabel
+                )}</span>`
+            );
 
             const badgeBlock = badges.length
                 ? `<span class="reportIssueInlineBadges">${badges.join(" ")}</span>`
