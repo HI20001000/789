@@ -596,6 +596,12 @@ function buildPrompt({
         const endLine = normaliseChunkInteger(location?.endLine ?? startLine);
         const startColumn = normaliseChunkInteger(location?.startColumn ?? location?.column);
         const endColumn = normaliseChunkInteger(location?.endColumn);
+        const lineLabel =
+            startLine
+                ? endLine && endLine !== startLine
+                    ? `第 ${startLine}-${endLine} 行`
+                    : `第 ${startLine} 行`
+                : "";
         const selectionCode =
             typeof selectionRaw?.code === "string"
                 ? selectionRaw.code
@@ -612,6 +618,7 @@ function buildPrompt({
             chunk_end_line: endLine ?? "",
             chunk_start_column: startColumn ?? "",
             chunk_end_column: endColumn ?? "",
+            line: lineLabel,
             code_location: location?.codeLocationLabel || describeSegmentLocation(location) || "",
             selection_start_line: selection?.startLine ?? "",
             selection_end_line: selection?.endLine ?? "",

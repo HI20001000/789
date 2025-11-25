@@ -263,7 +263,15 @@ const aiReviewPlaceholders = [
         required: true
     },
     { key: "chunk_total", label: "總片段數", description: "總片段數", group: "basic", required: true },
+    {
+        key: "line",
+        label: "程式碼位置",
+        description: "行號範圍（例如：第 44-56 行）",
+        group: "basic",
+        required: true
+    },
     { key: "rules", label: "規則集", description: "該語言啟用的規則說明", group: "basic" },
+    { key: "code", label: "程式碼片段", description: "當前程式碼區塊內容", group: "basic", required: true },
     { key: "chunk_start_line", label: "片段起始行", description: "片段起始行", group: "range" },
     { key: "chunk_end_line", label: "片段結束行", description: "片段結束行", group: "range" },
     { key: "chunk_start_column", label: "片段起始欄位", description: "片段起始欄位", group: "range" },
