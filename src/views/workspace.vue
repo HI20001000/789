@@ -468,8 +468,8 @@ const activeReportDetails = computed(() => {
     let aggregatedIssues = Array.isArray(aggregatedReports?.issues)
         ? aggregatedReports.issues
         : Array.isArray(aggregatedPayload?.issues)
-        ? aggregatedPayload.issues
-        : derivedAggregatedIssues;
+            ? aggregatedPayload.issues
+            : derivedAggregatedIssues;
     if (!Array.isArray(aggregatedIssues)) {
         aggregatedIssues = [];
     }
@@ -1834,11 +1834,11 @@ const shouldShowAiUnavailableNotice = computed(() => {
     const aiReport = details.dmlReport;
     const hasAiContent = Boolean(
         aiReport &&
-            ((Array.isArray(aiReport.issues) && aiReport.issues.length) ||
-                (Array.isArray(aiReport.segments) && aiReport.segments.length) ||
-                (typeof aiReport.aggregatedText === "string" && aiReport.aggregatedText.trim()) ||
-                (typeof aiReport.reportText === "string" && aiReport.reportText.trim()) ||
-                (aiReport.aggregated && Object.keys(aiReport.aggregated).length))
+        ((Array.isArray(aiReport.issues) && aiReport.issues.length) ||
+            (Array.isArray(aiReport.segments) && aiReport.segments.length) ||
+            (typeof aiReport.aggregatedText === "string" && aiReport.aggregatedText.trim()) ||
+            (typeof aiReport.reportText === "string" && aiReport.reportText.trim()) ||
+            (aiReport.aggregated && Object.keys(aiReport.aggregated).length))
     );
 
     return !hasAiContent;
@@ -2233,9 +2233,9 @@ function buildIssueDetailsHtml(issues, isOrphan = false) {
 
             tupleRows.push(
                 `<li class="reportIssueInlineTuple">` +
-                    `<span class="reportIssueInlineTupleItem reportIssueInlineTupleItem--severity">${escapeHtml(severity)}</span>` +
-                    `<span class="reportIssueInlineTupleItem reportIssueInlineTupleItem--rule">${escapeHtml(ruleId)}</span>` +
-                    `<span class="reportIssueInlineTupleItem reportIssueInlineTupleItem--message">${escapeHtml(issueText)}</span>` +
+                `<span class="reportIssueInlineTupleItem reportIssueInlineTupleItem--severity">${escapeHtml(severity)}</span>` +
+                `<span class="reportIssueInlineTupleItem reportIssueInlineTupleItem--rule">${escapeHtml(ruleId)}</span>` +
+                `<span class="reportIssueInlineTupleItem reportIssueInlineTupleItem--message">${escapeHtml(issueText)}</span>` +
                 `</li>`
             );
         }
@@ -2276,8 +2276,8 @@ function buildIssueDetailsHtml(issues, isOrphan = false) {
                 typeof detail?.message === "string" && detail.message.trim()
                     ? detail.message.trim()
                     : typeof issue?.message === "string" && issue.message.trim()
-                      ? issue.message.trim()
-                      : "未提供說明";
+                        ? issue.message.trim()
+                        : "未提供說明";
             const message = `<span class="reportIssueInlineMessage">${escapeHtml(messageText)}</span>`;
 
             const issueList = (() => {
@@ -2286,8 +2286,8 @@ function buildIssueDetailsHtml(issues, isOrphan = false) {
 
                 return issueItems.length
                     ? `<ul class="reportIssueInlineList">${issueItems
-                          .map((text) => `<li>${escapeHtml(text)}</li>`)
-                          .join("")}</ul>`
+                        .map((text) => `<li>${escapeHtml(text)}</li>`)
+                        .join("")}</ul>`
                     : "";
             })();
 
@@ -2385,8 +2385,8 @@ const buildIssueFixHtml = (issues) => {
                 typeof detail?.fixed_code === "string"
                     ? detail.fixed_code
                     : typeof detail?.fixedCode === "string"
-                      ? detail.fixedCode
-                      : "";
+                        ? detail.fixedCode
+                        : "";
             if (candidate && candidate.trim()) {
                 return candidate.trim();
             }
@@ -3264,8 +3264,8 @@ function normaliseReportAnalysisState(state) {
                     typeof difySource?.error_message === "string"
                         ? difySource.error_message
                         : typeof difySource?.errorMessage === "string"
-                        ? difySource.errorMessage
-                        : "";
+                            ? difySource.errorMessage
+                            : "";
                 if (difyError && difyError.trim()) {
                     state.difyErrorMessage = difyError.trim();
                 }
@@ -4483,140 +4483,81 @@ onBeforeUnmount(() => {
             <div class="topBar_right">
                 <div class="topBar_addProject" @click="showUploadModal = true">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                        <path d="M256,0C114.6,0,0,114.6,0,256s114.6,256,256,256s256-114.6,256-256S397.4,0,256,0z M405.3,277.3c0,11.8-9.5,21.3-21.3,21.3h-85.3V384c0,11.8-9.5,21.3-21.3,21.3h-42.7c-11.8,0-21.3-9.6-21.3-21.3v-85.3H128c-11.8,0-21.3-9.6-21.3-21.3v-42.7c0-11.8,9.5-21.3,21.3-21.3h85.3V128c0-11.8,9.5-21.3,21.3-21.3h42.7c11.8,0,21.3,9.6,21.3,21.3v85.3H384c11.8,0,21.3,9.6,21.3,21.3V277.3z" />
+                        <path
+                            d="M256,0C114.6,0,0,114.6,0,256s114.6,256,256,256s256-114.6,256-256S397.4,0,256,0z M405.3,277.3c0,11.8-9.5,21.3-21.3,21.3h-85.3V384c0,11.8-9.5,21.3-21.3,21.3h-42.7c-11.8,0-21.3-9.6-21.3-21.3v-85.3H128c-11.8,0-21.3-9.6-21.3-21.3v-42.7c0-11.8,9.5-21.3,21.3-21.3h85.3V128c0-11.8,9.5-21.3,21.3-21.3h42.7c11.8,0,21.3,9.6,21.3,21.3v85.3H384c11.8,0,21.3,9.6,21.3,21.3V277.3z" />
                     </svg>
                     <p>新增專案</p>
                 </div>
             </div>
         </div>
 
-        <div
-            class="mainContent themed-scrollbar"
-            :class="{ 'mainContent--settings': isSettingsViewActive }"
-            ref="mainContentRef"
-        >
+        <div class="mainContent themed-scrollbar" :class="{ 'mainContent--settings': isSettingsViewActive }"
+            ref="mainContentRef">
             <nav class="toolColumn">
-                <button
-                    type="button"
-                    class="toolColumn_btn"
-                    :class="{ active: isProjectToolActive }"
-                    @click="toggleProjectTool"
-                    :aria-pressed="isProjectToolActive"
-                    title="專案列表"
-                >
+                <button type="button" class="toolColumn_btn" :class="{ active: isProjectToolActive }"
+                    @click="toggleProjectTool" :aria-pressed="isProjectToolActive" title="專案列表">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <rect x="3" y="5" width="18" height="14" rx="2" ry="2" fill="currentColor" opacity="0.18" />
-                        <path
-                            d="M5 7h5l1.5 2H19v8H5V7Z"
-                            fill="currentColor"
-                        />
+                        <path d="M5 7h5l1.5 2H19v8H5V7Z" fill="currentColor" />
                     </svg>
                 </button>
-                <button
-                    type="button"
-                    class="toolColumn_btn"
-                    :class="{ active: isPreviewToolActive }"
-                    @click="togglePreviewTool"
-                    :aria-pressed="isPreviewToolActive"
-                    title="報告預覽"
-                >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-     xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.7"
-     stroke-linecap="round" stroke-linejoin="round">
-
-  <!-- larger concentric rounded background -->
-  <rect x="2.5" y="3.5" width="19" height="17" rx="2.5" ry="2.5"
-        fill="currentColor" opacity="0.18"/>
-
-  <!-- centered, slightly shorter document -->
-  <path d="M6.5 4h7.5l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5.5A1.5 1.5 0 0 1 6.5 4Z"
-        fill="none"/>
-  <path d="M14 4v4h4"/>
-
-  <!-- two content lines -->
-  <path d="M8.5 12.5h7"/>
-  <path d="M8.5 15h5.5"/>
-
-</svg>
-
+                <button type="button" class="toolColumn_btn" :class="{ active: isPreviewToolActive }"
+                    @click="togglePreviewTool" :aria-pressed="isPreviewToolActive" title="報告預覽">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                        stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2.5" y="3.5" width="19" height="17" rx="2.5" ry="2.5" fill="currentColor"
+                            opacity="0.18" />
+                        <path
+                            d="M6.5 4h7.5l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5.5A1.5 1.5 0 0 1 6.5 4Z"
+                            fill="none" />
+                        <path d="M14 4v4h4" />
+                        <path d="M8.5 12.5h7" />
+                        <path d="M8.5 15h5.5" />
+                    </svg>
                 </button>
-                <button
-                    type="button"
-                    class="toolColumn_btn"
-                    :class="{ active: isReportToolActive }"
-                    @click="toggleReportTool"
-                    :aria-pressed="isReportToolActive"
-                    title="報告審查"
-                >
+                <button type="button" class="toolColumn_btn" :class="{ active: isReportToolActive }"
+                    @click="toggleReportTool" :aria-pressed="isReportToolActive" title="報告審查">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <rect x="3" y="3" width="18" height="18" rx="9" fill="currentColor" opacity="0.18" />
                         <path
                             d="M14.8 13.4a4.5 4.5 0 1 0-1.4 1.4l3.5 3.5 1.4-1.4-3.5-3.5Zm-3.8.6a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"
-                            fill="currentColor"
-                        />
+                            fill="currentColor" />
                     </svg>
                 </button>
-                <button
-                    type="button"
-                    class="toolColumn_btn toolColumn_btn--chat"
-                    :class="{ active: isChatWindowOpen }"
-                    :disabled="isChatToggleDisabled"
-                    @click="toggleChatWindow"
-                    :aria-pressed="isChatWindowOpen"
-                    title="Chat AI"
-                >
+                <button type="button" class="toolColumn_btn toolColumn_btn--chat" :class="{ active: isChatWindowOpen }"
+                    :disabled="isChatToggleDisabled" @click="toggleChatWindow" :aria-pressed="isChatWindowOpen"
+                    title="Chat AI">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
                         <path
                             d="M8.5 8h7c.83 0 1.5.67 1.5 1.5v3c0 .83-.67 1.5-1.5 1.5h-.94l-1.8 1.88c-.31.33-.76.12-.76-.32V14.5h-3.5c-.83 0-1.5-.67-1.5-1.5v-3C7 8.67 7.67 8 8.5 8Z"
-                            fill="currentColor"
-                        />
+                            fill="currentColor" />
                     </svg>
                 </button>
-                <button
-                    type="button"
-                    class="toolColumn_btn toolColumn_btn--setting"
-                    :class="{ active: isSettingsViewActive }"
-                    @click="toggleSettingsView"
-                    :aria-pressed="isSettingsViewActive"
-                    title="Setting"
-                >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
-                        <path
-                            d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm8-3.5c0-.5-.04-.99-.1-1.47l1.74-1.32a1 1 0 0 0 .24-1.3l-1.65-2.86a1 1 0 0 0-1.25-.43l-2.05.83a7.4 7.4 0 0 0-2.55-1.48L13.2 1.8A1 1 0 0 0 12.2 1h-3.4a1 1 0 0 0-1 .8l-.38 2.19a7.4 7.4 0 0 0-2.55 1.48l-2.05-.83a1 1 0 0 0-1.25.43L0 7.73a1 1 0 0 0 .24 1.3L1.98 10.35a8.4 8.4 0 0 0 0 2.3L.24 13.98a1 1 0 0 0-.24 1.3l1.65 2.86c.26.45.81.65 1.25.43l2.05-.83c.76.62 1.6 1.12 2.55 1.48l.38 2.19a1 1 0 0 0 1 .8h3.4a1 1 0 0 0 1-.8l.38-2.19a7.4 7.4 0 0 0 2.55-1.48l2.05.83c.44.22.99.02 1.25-.43l1.65-2.86a1 1 0 0 0-.24-1.3L19.9 11.5c.06-.48.1-.97.1-1.5Z"
-                            fill="currentColor"
-                        />
+                <button type="button" class="toolColumn_btn toolColumn_btn--setting"
+                    :class="{ active: isSettingsViewActive }" @click="toggleSettingsView"
+                    :aria-pressed="isSettingsViewActive" title="Setting">
+                    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="12" fill="#E5E5E5" />
+                        <g transform="translate(0.5,0.5) scale(0.9583)">
+                            <path fill="currentColor"
+                                d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.63l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.027 7.027 0 0 0-1.63-.94L14.5 2.5a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 0-.5.5l-.34 2.37c-.6.24-1.16.55-1.67.94l-2.39-.96a.5.5 0 0 0-.61.22L2.57 8.85a.5.5 0 0 0 .12.63l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.63l1.92 3.32c.14.24.44.34.61.22l2.39-.96c.51.39 1.07.7 1.67.94l.34 2.37a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5l.34-2.37c.6-.24 1.16-.55 1.67-.94l2.39.96c.24.12.54.02.61-.22l1.92-3.32a.5.5 0 0 0-.12-.63l-2.03-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" />
+                        </g>
                     </svg>
+
                 </button>
             </nav>
-            <PanelRail
-                v-if="!isSettingsViewActive"
-                :style-width="middlePaneStyle"
-                :mode="panelMode"
-                :projects="projects"
-                :selected-project-id="selectedProjectId"
-                :on-select-project="handleSelectProject"
-                :on-delete-project="deleteProject"
-                :is-tree-collapsed="isTreeCollapsed"
+            <PanelRail v-if="!isSettingsViewActive" :style-width="middlePaneStyle" :mode="panelMode"
+                :projects="projects" :selected-project-id="selectedProjectId" :on-select-project="handleSelectProject"
+                :on-delete-project="deleteProject" :is-tree-collapsed="isTreeCollapsed"
                 :is-report-tree-collapsed="isReportTreeCollapsed"
-                :show-content="isProjectToolActive || isReportToolActive || isPreviewToolActive"
-                :tree="tree"
-                :active-tree-path="activeTreePath"
-                :is-loading-tree="isLoadingTree"
-                :open-node="openNode"
-                :select-tree-node="selectTreeNode"
-                :report-config="reportPanelConfig"
-                :toggle-report-tree="toggleReportTreeCollapsed"
-                @resize-start="startPreviewResize"
-            >
+                :show-content="isProjectToolActive || isReportToolActive || isPreviewToolActive" :tree="tree"
+                :active-tree-path="activeTreePath" :is-loading-tree="isLoadingTree" :open-node="openNode"
+                :select-tree-node="selectTreeNode" :report-config="reportPanelConfig"
+                :toggle-report-tree="toggleReportTreeCollapsed" @resize-start="startPreviewResize">
                 <template v-if="isPreviewToolActive" #default>
-                    <ProjectPreviewPanel
-                        :previews="projectPreviewEntries"
-                        :loading="isProjectPreviewLoading"
-                        :compact="true"
-                        @select-issue="handlePreviewIssueSelect"
-                    />
+                    <ProjectPreviewPanel :previews="projectPreviewEntries" :loading="isProjectPreviewLoading"
+                        :compact="true" @select-issue="handlePreviewIssueSelect" />
                 </template>
             </PanelRail>
 
@@ -4642,24 +4583,15 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="settingsTabs" role="tablist" aria-label="設定分頁">
-                            <button
-                                type="button"
-                                class="settingsTab"
-                                :class="{ active: activeSettingTab === 'rules' }"
-                                @click="activeSettingTab = 'rules'"
-                                role="tab"
-                                :aria-selected="activeSettingTab === 'rules'"
-                            >
+                            <button type="button" class="settingsTab" :class="{ active: activeSettingTab === 'rules' }"
+                                @click="activeSettingTab = 'rules'" role="tab"
+                                :aria-selected="activeSettingTab === 'rules'">
                                 規則引擎
                             </button>
-                            <button
-                                type="button"
-                                class="settingsTab"
+                            <button type="button" class="settingsTab"
                                 :class="{ active: activeSettingTab === 'ai-review' }"
-                                @click="activeSettingTab = 'ai-review'"
-                                role="tab"
-                                :aria-selected="activeSettingTab === 'ai-review'"
-                            >
+                                @click="activeSettingTab = 'ai-review'" role="tab"
+                                :aria-selected="activeSettingTab === 'ai-review'">
                                 AI 審查
                             </button>
                         </div>
@@ -4674,20 +4606,12 @@ onBeforeUnmount(() => {
                                         <p class="settingsStatus success" v-else-if="ruleSettingsState.message">
                                             {{ ruleSettingsState.message }}
                                         </p>
-                                        <button
-                                            type="button"
-                                            class="btn outline"
-                                            @click="addRuleRow"
-                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving"
-                                        >
+                                        <button type="button" class="btn outline" @click="addRuleRow"
+                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving">
                                             新增規則
                                         </button>
-                                        <button
-                                            type="button"
-                                            class="btn"
-                                            @click="handleSaveRules"
-                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading"
-                                        >
+                                        <button type="button" class="btn" @click="handleSaveRules"
+                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading">
                                             {{ ruleSettingsState.saving ? "保存中..." : "保存規則" }}
                                         </button>
                                     </div>
@@ -4700,29 +4624,16 @@ onBeforeUnmount(() => {
                                             <div class="ruleCell" role="columnheader">風險指標</div>
                                             <div class="ruleCell" role="columnheader">操作</div>
                                         </div>
-                                        <div
-                                            v-for="(rule, index) in activeRuleSettings"
-                                            :key="rule.localId || `rule-${index}`"
-                                            class="ruleRow"
-                                            role="row"
-                                        >
+                                        <div v-for="(rule, index) in activeRuleSettings"
+                                            :key="rule.localId || `rule-${index}`" class="ruleRow" role="row">
                                             <div class="ruleCell" role="cell">
-                                                <input
-                                                    v-model="rule.ruleId"
-                                                    type="text"
-                                                    class="ruleInput"
-                                                    :aria-label="`規則 ${index + 1} ID`"
-                                                    placeholder="R-001"
-                                                />
+                                                <input v-model="rule.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} ID`" placeholder="R-001" />
                                             </div>
                                             <div class="ruleCell" role="cell">
-                                                <input
-                                                    v-model="rule.description"
-                                                    type="text"
-                                                    class="ruleInput"
+                                                <input v-model="rule.description" type="text" class="ruleInput"
                                                     :aria-label="`規則 ${index + 1} 描述`"
-                                                    :placeholder="ruleDescriptionPlaceholder"
-                                                />
+                                                    :placeholder="ruleDescriptionPlaceholder" />
                                             </div>
                                             <div class="ruleCell" role="cell">
                                                 <label class="toggle">
@@ -4731,21 +4642,13 @@ onBeforeUnmount(() => {
                                                 </label>
                                             </div>
                                             <div class="ruleCell" role="cell">
-                                                <input
-                                                    v-model="rule.riskIndicator"
-                                                    type="text"
-                                                    class="ruleInput"
+                                                <input v-model="rule.riskIndicator" type="text" class="ruleInput"
                                                     :aria-label="`規則 ${index + 1} 風險指標`"
-                                                    :placeholder="riskIndicatorPlaceholder"
-                                                />
+                                                    :placeholder="riskIndicatorPlaceholder" />
                                             </div>
                                             <div class="ruleCell ruleCell--actions" role="cell">
-                                                <button
-                                                    type="button"
-                                                    class="btn ghost"
-                                                    @click="removeRuleRow(index)"
-                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving"
-                                                >
+                                                <button type="button" class="btn ghost" @click="removeRuleRow(index)"
+                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving">
                                                     刪除
                                                 </button>
                                             </div>
@@ -4757,26 +4660,17 @@ onBeforeUnmount(() => {
                             <template v-else>
                                 <div class="settingsCard">
                                     <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
-                                    <textarea
-                                        id="aiReviewContent"
-                                        v-model="activeAiReviewContent"
-                                        class="aiReviewInput"
-                                        rows="8"
-                                        :placeholder="aiReviewPlaceholder"
-                                        :disabled="aiReviewState.loading"
-                                    ></textarea>
+                                    <textarea id="aiReviewContent" v-model="activeAiReviewContent" class="aiReviewInput"
+                                        rows="8" :placeholder="aiReviewPlaceholder"
+                                        :disabled="aiReviewState.loading"></textarea>
 
                                     <div class="settingsActions">
                                         <p class="settingsStatus" v-if="aiReviewState.loading">設定載入中...</p>
                                         <p class="settingsStatus success" v-else-if="aiReviewState.message">
                                             {{ aiReviewState.message }}
                                         </p>
-                                        <button
-                                            type="button"
-                                            class="btn"
-                                            @click="handleSaveAiReviewSetting"
-                                            :disabled="aiReviewState.saving || aiReviewState.loading"
-                                        >
+                                        <button type="button" class="btn" @click="handleSaveAiReviewSetting"
+                                            :disabled="aiReviewState.saving || aiReviewState.loading">
                                             {{ aiReviewState.saving ? "保存中..." : "保存 AI 設定" }}
                                         </button>
                                     </div>
@@ -4788,25 +4682,21 @@ onBeforeUnmount(() => {
                 <template v-else-if="isReportToolActive">
                     <div class="panelHeader">報告檢視</div>
                     <template v-if="hasReadyReports || viewerHasContent">
-                        <div
-                            class="reportViewerContent"
+                        <div class="reportViewerContent"
                             :class="{ 'reportViewerContent--loading': isActiveReportProcessing }"
-                            ref="reportViewerContentRef"
-                            :aria-busy="isActiveReportProcessing ? 'true' : 'false'"
-                        >
-                            <div
-                                v-if="isActiveReportProcessing"
-                                class="reportViewerProcessingOverlay reportViewerLoading"
-                                role="status"
-                                aria-live="polite"
-                            >
+                            ref="reportViewerContentRef" :aria-busy="isActiveReportProcessing ? 'true' : 'false'">
+                            <div v-if="isActiveReportProcessing"
+                                class="reportViewerProcessingOverlay reportViewerLoading" role="status"
+                                aria-live="polite">
                                 <span class="reportViewerSpinner" aria-hidden="true"></span>
                                 <p class="reportViewerProcessingText">正在透過 Dify 執行 AI審查，請稍候…</p>
                             </div>
                             <template v-if="activeReport">
                                 <div class="reportViewerHeader">
-                                    <h3 class="reportTitle">{{ activeReport.project.name }} / {{ activeReport.path }}</h3>
-                                    <p class="reportViewerTimestamp">更新於 {{ activeReport.state.updatedAtDisplay || '-' }}</p>
+                                    <h3 class="reportTitle">{{ activeReport.project.name }} / {{ activeReport.path }}
+                                    </h3>
+                                    <p class="reportViewerTimestamp">更新於 {{ activeReport.state.updatedAtDisplay || '-'
+                                    }}</p>
                                 </div>
                                 <div v-if="activeReport.state.status === 'error'" class="reportErrorPanel">
                                     <p class="reportErrorText">生成失敗：{{ activeReport.state.error || '未知原因' }}</p>
@@ -4814,100 +4704,70 @@ onBeforeUnmount(() => {
                                 </div>
                                 <template v-else>
                                     <div v-if="hasStructuredReport" class="reportStructured">
-                                        <div
-                                            v-if="hasStructuredReportToggle"
-                                            class="reportStructuredToggle"
-                                            role="group"
-                                            aria-label="報告來源"
-                                        >
+                                        <div v-if="hasStructuredReportToggle" class="reportStructuredToggle"
+                                            role="group" aria-label="報告來源">
                                             <div class="reportStructuredToggleButtons">
-                                                <button
-                                                    type="button"
-                                                    class="reportStructuredToggleButton"
+                                                <button type="button" class="reportStructuredToggleButton"
                                                     :class="{ active: structuredReportViewMode === 'combined' }"
                                                     :disabled="!canShowStructuredSummary"
-                                                    @click="setStructuredReportViewMode('combined')"
-                                                >
+                                                    @click="setStructuredReportViewMode('combined')">
                                                     總報告
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    class="reportStructuredToggleButton"
+                                                <button type="button" class="reportStructuredToggleButton"
                                                     :class="{ active: structuredReportViewMode === 'static' }"
                                                     :disabled="!canShowStructuredStatic"
-                                                    @click="setStructuredReportViewMode('static')"
-                                                >
+                                                    @click="setStructuredReportViewMode('static')">
                                                     靜態分析器
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    class="reportStructuredToggleButton"
+                                                <button type="button" class="reportStructuredToggleButton"
                                                     :class="{ active: structuredReportViewMode === 'dml' }"
                                                     :disabled="!canShowStructuredDml"
-                                                    @click="setStructuredReportViewMode('dml')"
-                                                >
+                                                    @click="setStructuredReportViewMode('dml')">
                                                     AI審查
                                                 </button>
                                             </div>
-                                            <button
-                                                v-if="shouldShowStructuredExportButton"
-                                                type="button"
+                                            <button v-if="shouldShowStructuredExportButton" type="button"
                                                 class="reportExportButton reportStructuredToggleExport"
                                                 :disabled="structuredReportExportConfig.busy"
                                                 :aria-busy="structuredReportExportConfig.busy ? 'true' : 'false'"
-                                                @click="exportCurrentStructuredReportJson"
-                                            >
+                                                @click="exportCurrentStructuredReportJson">
                                                 <span v-if="structuredReportExportConfig.busy">匯出中…</span>
                                                 <span v-else>{{ structuredReportExportLabel }}</span>
                                             </button>
                                         </div>
                                         <section
                                             v-if="structuredReportViewMode === 'combined' && canShowStructuredSummary"
-                                            class="reportSummaryGrid"
-                                        >
+                                            class="reportSummaryGrid">
                                             <div class="reportSummaryCard reportSummaryCard--total">
                                                 <span class="reportSummaryLabel">問題</span>
-                                                <span class="reportSummaryValue">{{ activeReportTotalIssuesDisplay }}</span>
+                                                <span class="reportSummaryValue">{{ activeReportTotalIssuesDisplay
+                                                }}</span>
                                             </div>
-                                            <div
-                                                v-if="activeReportSummaryText"
-                                                class="reportSummaryCard reportSummaryCard--span"
-                                            >
+                                            <div v-if="activeReportSummaryText"
+                                                class="reportSummaryCard reportSummaryCard--span">
                                                 <span class="reportSummaryLabel">摘要</span>
                                                 <p class="reportSummaryText">{{ activeReportSummaryText }}</p>
                                             </div>
-                                            <div
-                                                v-else-if="shouldShowNoIssueSummary"
-                                                class="reportSummaryCard reportSummaryCard--span"
-                                            >
+                                            <div v-else-if="shouldShowNoIssueSummary"
+                                                class="reportSummaryCard reportSummaryCard--span">
                                                 <span class="reportSummaryLabel">摘要</span>
                                                 <p class="reportSummaryText">未檢測到問題。</p>
                                             </div>
-                                            <div
-                                                v-if="ruleBreakdownItems.length"
-                                                class="reportSummaryCard"
-                                            >
+                                            <div v-if="ruleBreakdownItems.length" class="reportSummaryCard">
                                                 <span class="reportSummaryLabel">規則分佈</span>
                                                 <ul class="reportSummaryList">
-                                                    <li
-                                                        v-for="item in ruleBreakdownItems"
-                                                        :key="`${item.label}-${item.count}`"
-                                                    >
+                                                    <li v-for="item in ruleBreakdownItems"
+                                                        :key="`${item.label}-${item.count}`">
                                                         <span class="reportSummaryItemLabel">{{ item.label }}</span>
                                                         <span class="reportSummaryItemValue">{{ item.count }}</span>
                                                     </li>
                                                 </ul>
                                             </div>
-                                            <div
-                                                v-if="severityBreakdownItems.length"
-                                                class="reportSummaryCard"
-                                            >
+                                            <div v-if="severityBreakdownItems.length" class="reportSummaryCard">
                                                 <span class="reportSummaryLabel">嚴重度</span>
                                                 <ul class="reportSummaryList">
-                                                    <li
-                                                        v-for="item in severityBreakdownItems"
-                                                        :key="`${item.label}-${item.count}`"
-                                                    >
+                                                    <li v-for="item in severityBreakdownItems"
+                                                        :key="`${item.label}-${item.count}`">
                                                         <span class="reportSummaryItemLabel">{{ item.label }}</span>
                                                         <span class="reportSummaryItemValue">{{ item.count }}</span>
                                                     </li>
@@ -4915,10 +4775,8 @@ onBeforeUnmount(() => {
                                             </div>
                                         </section>
 
-                                        <section
-                                            v-if="structuredReportViewMode === 'static' && hasStaticDetailContent"
-                                            class="reportStaticSection"
-                                        >
+                                        <section v-if="structuredReportViewMode === 'static' && hasStaticDetailContent"
+                                            class="reportStaticSection">
                                             <div class="reportStaticHeader">
                                                 <h4>靜態分析器</h4>
                                                 <span v-if="staticEngineName" class="reportStaticEngine">
@@ -4928,31 +4786,21 @@ onBeforeUnmount(() => {
                                                     來源：{{ staticSourceName }}
                                                 </span>
                                             </div>
-                                            <div
-                                                v-if="staticSummaryDetailsItems.length"
-                                                class="reportStaticBlock"
-                                            >
+                                            <div v-if="staticSummaryDetailsItems.length" class="reportStaticBlock">
                                                 <h5>摘要資訊</h5>
                                                 <ul class="reportStaticList">
-                                                    <li
-                                                        v-for="item in staticSummaryDetailsItems"
-                                                        :key="`static-summary-${item.label}-${item.value}`"
-                                                    >
+                                                    <li v-for="item in staticSummaryDetailsItems"
+                                                        :key="`static-summary-${item.label}-${item.value}`">
                                                         <span class="reportStaticItemLabel">{{ item.label }}</span>
                                                         <span class="reportStaticItemValue">{{ item.value }}</span>
                                                     </li>
                                                 </ul>
                                             </div>
-                                            <div
-                                                v-if="staticMetadataDetailsItems.length"
-                                                class="reportStaticBlock"
-                                            >
+                                            <div v-if="staticMetadataDetailsItems.length" class="reportStaticBlock">
                                                 <h5>中繼資料</h5>
                                                 <ul class="reportStaticList">
-                                                    <li
-                                                        v-for="item in staticMetadataDetailsItems"
-                                                        :key="`static-metadata-${item.label}-${item.value}`"
-                                                    >
+                                                    <li v-for="item in staticMetadataDetailsItems"
+                                                        :key="`static-metadata-${item.label}-${item.value}`">
                                                         <span class="reportStaticItemLabel">{{ item.label }}</span>
                                                         <span class="reportStaticItemValue">{{ item.value }}</span>
                                                     </li>
@@ -4960,28 +4808,18 @@ onBeforeUnmount(() => {
                                             </div>
                                         </section>
 
-                                        <section
-                                            v-if="structuredReportViewMode === 'dml' && dmlReportDetails"
-                                            class="reportDmlSection"
-                                        >
-                                            <details
-                                                class="reportDmlDetails"
-                                                :open="isDmlReportExpanded"
-                                                @toggle="handleToggleDmlSection"
-                                            >
+                                        <section v-if="structuredReportViewMode === 'dml' && dmlReportDetails"
+                                            class="reportDmlSection">
+                                            <details class="reportDmlDetails" :open="isDmlReportExpanded"
+                                                @toggle="handleToggleDmlSection">
                                                 <summary class="reportDmlSummaryToggle">
                                                     <div class="reportDmlHeader">
                                                         <h4>區塊拆分</h4>
-                                                        <span
-                                                            v-if="dmlReportDetails.status"
-                                                            class="reportDmlStatus"
-                                                        >
+                                                        <span v-if="dmlReportDetails.status" class="reportDmlStatus">
                                                             {{ dmlReportDetails.status }}
                                                         </span>
-                                                        <span
-                                                            v-if="dmlReportDetails.generatedAt"
-                                                            class="reportDmlTimestamp"
-                                                        >
+                                                        <span v-if="dmlReportDetails.generatedAt"
+                                                            class="reportDmlTimestamp">
                                                             產生於 {{ dmlReportDetails.generatedAt }}
                                                         </span>
                                                     </div>
@@ -4991,60 +4829,42 @@ onBeforeUnmount(() => {
                                                         {{ dmlReportDetails.error }}
                                                     </p>
                                                     <div v-if="hasDmlSegments" class="reportDmlSegments">
-                                                        <details
-                                                            v-for="segment in dmlSegments"
-                                                            :key="segment.key"
-                                                            class="reportDmlSegment"
-                                                        >
+                                                        <details v-for="segment in dmlSegments" :key="segment.key"
+                                                            class="reportDmlSegment">
                                                             <summary>
                                                                 第 {{ segment.index }} 段
                                                                 <span v-if="segment.startLine">
                                                                     （第 {{ segment.startLine }} 行起
-                                                                    <span v-if="segment.endLine"
-                                                                        >，至第 {{ segment.endLine }} 行止</span
-                                                                    >
+                                                                    <span v-if="segment.endLine">，至第 {{ segment.endLine
+                                                                    }} 行止</span>
                                                                     ）
                                                                 </span>
                                                             </summary>
-                                                            <pre
-                                                                v-if="segment.text || segment.sql"
+                                                            <pre v-if="segment.text || segment.sql"
                                                                 class="reportDmlSql codeScroll themed-scrollbar"
-                                                                v-text="segment.text || segment.sql"
-                                                            ></pre>
-                                                            <pre
-                                                                v-if="segment.analysis"
+                                                                v-text="segment.text || segment.sql"></pre>
+                                                            <pre v-if="segment.analysis"
                                                                 class="reportDmlAnalysis codeScroll themed-scrollbar"
-                                                                v-text="segment.analysis"
-                                                            ></pre>
+                                                                v-text="segment.analysis"></pre>
                                                         </details>
                                                     </div>
                                                     <p v-else class="reportDmlEmpty">尚未取得 AI審查拆分結果。</p>
-                                                    <pre
-                                                        v-if="dmlReportDetails.reportText"
+                                                    <pre v-if="dmlReportDetails.reportText"
                                                         class="reportDmlSummary codeScroll themed-scrollbar"
-                                                        v-text="dmlReportDetails.reportText"
-                                                    ></pre>
+                                                        v-text="dmlReportDetails.reportText"></pre>
                                                 </div>
                                             </details>
                                         </section>
-                                        <section
-                                            v-if="structuredReportJsonPreview"
-                                            class="reportJsonPreviewSection"
-                                        >
+                                        <section v-if="structuredReportJsonPreview" class="reportJsonPreviewSection">
                                             <details class="reportJsonPreviewDetails">
                                                 <summary class="reportJsonPreviewSummary">
                                                     {{ structuredReportJsonHeading }}
                                                 </summary>
-                                                <pre
-                                                    class="reportJsonPreview codeScroll themed-scrollbar"
-                                                    v-text="structuredReportJsonPreview"
-                                                ></pre>
+                                                <pre class="reportJsonPreview codeScroll themed-scrollbar"
+                                                    v-text="structuredReportJsonPreview"></pre>
                                             </details>
                                         </section>
-                                        <section
-                                            v-if="shouldShowReportIssuesSection"
-                                            class="reportIssuesSection"
-                                        >
+                                        <section v-if="shouldShowReportIssuesSection" class="reportIssuesSection">
                                             <div class="reportIssuesHeader">
                                                 <div class="reportIssuesHeaderInfo">
                                                     <h4>問題清單</h4>
@@ -5058,87 +4878,60 @@ onBeforeUnmount(() => {
                                             </div>
                                             <div class="reportIssuesContent" ref="reportIssuesContentRef">
                                                 <template v-if="activeReportDetails">
-                                                    <div
-                                                        v-if="activeReport.state.sourceLoading"
-                                                        class="reportIssuesNotice"
-                                                    >
+                                                    <div v-if="activeReport.state.sourceLoading"
+                                                        class="reportIssuesNotice">
                                                         正在載入原始碼…
                                                     </div>
-                                                    <div
-                                                        v-else-if="activeReport.state.sourceError"
-                                                        class="reportIssuesNotice reportIssuesNotice--error"
-                                                    >
+                                                    <div v-else-if="activeReport.state.sourceError"
+                                                        class="reportIssuesNotice reportIssuesNotice--error">
                                                         無法載入檔案內容：{{ activeReport.state.sourceError }}
                                                     </div>
                                                     <template v-else>
-                                                        <div
-                                                            v-if="shouldShowAiUnavailableNotice"
-                                                            class="reportIssuesNotice reportIssuesNotice--warning"
-                                                        >
+                                                        <div v-if="shouldShowAiUnavailableNotice"
+                                                            class="reportIssuesNotice reportIssuesNotice--warning">
                                                             {{ reportAiUnavailableNotice }}
                                                         </div>
-                                                        <div
-                                                            v-if="hasReportIssueLines"
-                                                            class="reportRow reportIssuesRow"
-                                                        >
+                                                        <div v-if="hasReportIssueLines"
+                                                            class="reportRow reportIssuesRow">
                                                             <div class="reportRowContent codeScroll themed-scrollbar">
                                                                 <div class="codeEditor">
-                                                                    <div
-                                                                        v-for="line in reportIssueLines"
-                                                                        :key="line.key"
-                                                                        class="codeLine"
+                                                                    <div v-for="line in reportIssueLines"
+                                                                        :key="line.key" class="codeLine"
                                                                         :data-line="line.number != null ? line.number : undefined"
                                                                         :class="{
                                                                             'codeLine--issue': line.type === 'code' && line.hasIssue,
                                                                             'codeLine--meta': line.type !== 'code',
                                                                             'codeLine--issuesMeta': line.type === 'issues',
                                                                             'codeLine--fixMeta': line.type === 'fix'
-                                                                        }"
-                                                                    >
-                                                                        <span
-                                                                            class="codeLineNo"
-                                                                            :class="{
-                                                                                'codeLineNo--issue': line.type === 'code' && line.hasIssue,
-                                                                                'codeLineNo--meta': line.type !== 'code',
-                                                                                'codeLineNo--issues': line.type === 'issues',
-                                                                                'codeLineNo--fix': line.type === 'fix'
-                                                                            }"
-                                                                            :data-line="line.number != null ? line.displayNumber : ''"
+                                                                        }">
+                                                                        <span class="codeLineNo" :class="{
+                                                                            'codeLineNo--issue': line.type === 'code' && line.hasIssue,
+                                                                            'codeLineNo--meta': line.type !== 'code',
+                                                                            'codeLineNo--issues': line.type === 'issues',
+                                                                            'codeLineNo--fix': line.type === 'fix'
+                                                                        }" :data-line="line.number != null ? line.displayNumber : ''"
                                                                             :aria-label="line.type !== 'code' ? line.iconLabel : null"
-                                                                            :aria-hidden="line.type === 'code'"
-                                                                        >
-                                                                            <svg
-                                                                                v-if="line.type === 'issues'"
+                                                                            :aria-hidden="line.type === 'code'">
+                                                                            <svg v-if="line.type === 'issues'"
                                                                                 class="codeLineNoIcon codeLineNoIcon--warning"
-                                                                                viewBox="0 0 20 20"
-                                                                                focusable="false"
-                                                                                aria-hidden="true"
-                                                                            >
+                                                                                viewBox="0 0 20 20" focusable="false"
+                                                                                aria-hidden="true">
                                                                                 <path
-                                                                                    d="M10.447 2.105a1 1 0 00-1.894 0l-7 14A1 1 0 002.447 18h15.106a1 1 0 00.894-1.447l-7-14zM10 6a1 1 0 01.993.883L11 7v4a1 1 0 01-1.993.117L9 11V7a1 1 0 011-1zm0 8a1 1 0 110 2 1 1 0 010-2z"
-                                                                                />
+                                                                                    d="M10.447 2.105a1 1 0 00-1.894 0l-7 14A1 1 0 002.447 18h15.106a1 1 0 00.894-1.447l-7-14zM10 6a1 1 0 01.993.883L11 7v4a1 1 0 01-1.993.117L9 11V7a1 1 0 011-1zm0 8a1 1 0 110 2 1 1 0 010-2z" />
                                                                             </svg>
-                                                                            <svg
-                                                                                v-else-if="line.type === 'fix'"
+                                                                            <svg v-else-if="line.type === 'fix'"
                                                                                 class="codeLineNoIcon codeLineNoIcon--fix"
-                                                                                viewBox="0 0 20 20"
-                                                                                focusable="false"
-                                                                                aria-hidden="true"
-                                                                            >
+                                                                                viewBox="0 0 20 20" focusable="false"
+                                                                                aria-hidden="true">
                                                                                 <path
-                                                                                    d="M17.898 2.102a1 1 0 00-1.517.127l-2.156 2.873-1.21-.403a1 1 0 00-1.043.24l-4.95 4.95a1 1 0 000 1.414l1.775 1.775-5.189 5.189a1 1 0 001.414 1.414l5.189-5.189 1.775 1.775a1 1 0 001.414 0l4.95-4.95a1 1 0 00.24-1.043l-.403-1.21 2.873-2.156a1 1 0 00.127-1.517l-.489-.489z"
-                                                                                />
+                                                                                    d="M17.898 2.102a1 1 0 00-1.517.127l-2.156 2.873-1.21-.403a1 1 0 00-1.043.24l-4.95 4.95a1 1 0 000 1.414l1.775 1.775-5.189 5.189a1 1 0 001.414 1.414l5.189-5.189 1.775 1.775a1 1 0 001.414 0l4.95-4.95a1 1 0 00.24-1.043l-.403-1.21 2.873-2.156a1 1 0 00.127-1.517l-.489-.489z" />
                                                                             </svg>
                                                                         </span>
-                                                                        <span
-                                                                            class="codeLineContent"
-                                                                            :class="{
-                                                                                'codeLineContent--issueHighlight': line.type === 'code' && line.hasIssue,
-                                                                                'codeLineContent--issues': line.type === 'issues',
-                                                                                'codeLineContent--fix': line.type === 'fix'
-                                                                            }"
-                                                                            v-html="line.html"
-                                                                        ></span>
+                                                                        <span class="codeLineContent" :class="{
+                                                                            'codeLineContent--issueHighlight': line.type === 'code' && line.hasIssue,
+                                                                            'codeLineContent--issues': line.type === 'issues',
+                                                                            'codeLineContent--fix': line.type === 'fix'
+                                                                        }" v-html="line.html"></span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -5148,40 +4941,33 @@ onBeforeUnmount(() => {
                                                 </template>
                                                 <p v-else class="reportIssuesEmpty">尚未能載入完整的代碼內容。</p>
                                             </div>
-                                            </section>
-                                        <section
-                                            v-else
-                                            class="reportIssuesSection reportIssuesSection--empty"
-                                        >
+                                        </section>
+                                        <section v-else class="reportIssuesSection reportIssuesSection--empty">
                                             <p class="reportIssuesEmpty">未檢測到任何問題。</p>
                                         </section>
 
                                     </div>
-                                    <pre v-else class="reportBody codeScroll themed-scrollbar">{{ activeReport.state.report }}</pre>
+                                    <pre v-else
+                                        class="reportBody codeScroll themed-scrollbar">{{ activeReport.state.report }}</pre>
                                     <details v-if="shouldShowDmlChunkDetails" class="reportChunks">
                                         <summary>AI 審查段落（{{ dmlChunkDetails.length }}）</summary>
                                         <ol class="reportChunkList reportChunkList--issues">
-                                            <li
-                                                v-for="chunk in dmlChunkDetails"
-                                                :key="`chunk-${chunk.index}-${chunk.total}`"
-                                            >
+                                            <li v-for="chunk in dmlChunkDetails"
+                                                :key="`chunk-${chunk.index}-${chunk.total}`">
                                                 <h4 class="reportChunkTitle">第 {{ chunk.index }} 段</h4>
                                                 <template v-if="chunk.issues.length">
                                                     <ul class="reportChunkIssues">
-                                                        <li
-                                                            v-for="(issue, issueIndex) in chunk.issues"
+                                                        <li v-for="(issue, issueIndex) in chunk.issues"
                                                             :key="`chunk-${chunk.index}-issue-${issueIndex}`"
-                                                            class="reportChunkIssue"
-                                                        >
+                                                            class="reportChunkIssue">
                                                             <p class="reportChunkIssueMessage">{{ issue.message }}</p>
-                                                            <p v-if="issue.rule" class="reportChunkIssueMeta">規則：{{ issue.rule }}</p>
+                                                            <p v-if="issue.rule" class="reportChunkIssueMeta">規則：{{
+                                                                issue.rule }}</p>
                                                             <p v-if="issue.severity" class="reportChunkIssueMeta">
                                                                 嚴重度：{{ issue.severity }}
                                                             </p>
-                                                            <p
-                                                                v-if="describeIssueLineRange(issue)"
-                                                                class="reportChunkIssueMeta"
-                                                            >
+                                                            <p v-if="describeIssueLineRange(issue)"
+                                                                class="reportChunkIssueMeta">
                                                                 行數：第 {{ describeIssueLineRange(issue) }} 行
                                                             </p>
                                                             <p v-if="issue.context" class="reportChunkIssueContext">
@@ -5201,42 +4987,28 @@ onBeforeUnmount(() => {
                             </template>
                         </div>
                     </template>
-            <p v-else class="reportViewerPlaceholder">尚未生成任何報告，請先於左側檔案中啟動生成。</p>
-        </template>
-        <template v-else-if="isPreviewToolActive">
-            <ProjectPreviewPanel
-                :previews="projectPreviewEntries"
-                :loading="isProjectPreviewLoading"
-                :show-summary="true"
-                @select-issue="handlePreviewIssueSelect"
-                    />
+                    <p v-else class="reportViewerPlaceholder">尚未生成任何報告，請先於左側檔案中啟動生成。</p>
+                </template>
+                <template v-else-if="isPreviewToolActive">
+                    <ProjectPreviewPanel :previews="projectPreviewEntries" :loading="isProjectPreviewLoading"
+                        :show-summary="true" @select-issue="handlePreviewIssueSelect" />
                 </template>
                 <template v-else-if="previewing.kind && previewing.kind !== 'error'">
                     <div class="pvHeader">
                         <div class="pvName">{{ previewing.name }}</div>
-                        <div class="pvMeta">{{ previewing.mime || '-' }} | {{ (previewing.size / 1024).toFixed(1) }} KB</div>
+                        <div class="pvMeta">{{ previewing.mime || '-' }} | {{ (previewing.size / 1024).toFixed(1) }} KB
+                        </div>
                     </div>
 
                     <template v-if="previewing.kind === 'text'">
                         <div class="pvBox codeBox">
-                            <div
-                                class="codeScroll themed-scrollbar"
-                                :class="{ 'codeScroll--wrapped': !showCodeLineNumbers }"
-                                ref="codeScrollRef"
-                                @pointerdown="handleCodeScrollPointerDown"
-                            >
+                            <div class="codeScroll themed-scrollbar"
+                                :class="{ 'codeScroll--wrapped': !showCodeLineNumbers }" ref="codeScrollRef"
+                                @pointerdown="handleCodeScrollPointerDown">
                                 <div class="codeEditor">
-                                    <div
-                                        v-for="line in previewLineItems"
-                                        :key="line.number"
-                                        class="codeLine"
-                                        :data-line="line.number"
-                                    >
-                                        <span
-                                            class="codeLineNo"
-                                            :data-line="line.number"
-                                            aria-hidden="true"
-                                        ></span>
+                                    <div v-for="line in previewLineItems" :key="line.number" class="codeLine"
+                                        :data-line="line.number">
+                                        <span class="codeLineNo" :data-line="line.number" aria-hidden="true"></span>
                                         <span class="codeLineContent" v-html="renderLineContent(line)"></span>
                                     </div>
                                 </div>
@@ -5250,7 +5022,8 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div v-else-if="previewing.kind === 'pdf'" class="pvBox pdfBox">
-                        <iframe :src="previewing.url" title="PDF Preview" style="width:100%;height:100%;border:none;"></iframe>
+                        <iframe :src="previewing.url" title="PDF Preview"
+                            style="width:100%;height:100%;border:none;"></iframe>
                     </div>
 
                     <div v-else class="pvBox">
@@ -5272,38 +5045,31 @@ onBeforeUnmount(() => {
         </div>
 
         <Teleport to="body">
-            <ChatAiWindow
-                :visible="isChatWindowOpen && !isSettingsViewActive"
-                :floating-style="chatWindowStyle"
-                :context-items="contextItems"
-                :messages="messages"
-                :loading="isProcessing"
-                :disabled="isChatLocked"
-                :connection="connection"
-                @add-active="handleAddActiveContext"
-                @add-selection="handleAddSelectionContext"
-                @clear-context="clearContext"
-                @remove-context="removeContext"
-                @send-message="handleSendMessage"
-                @close="closeChatWindow"
-                @drag-start="startChatDrag"
-                @resize-start="startChatResize"
-            />
+            <ChatAiWindow :visible="isChatWindowOpen && !isSettingsViewActive" :floating-style="chatWindowStyle"
+                :context-items="contextItems" :messages="messages" :loading="isProcessing" :disabled="isChatLocked"
+                :connection="connection" @add-active="handleAddActiveContext" @add-selection="handleAddSelectionContext"
+                @clear-context="clearContext" @remove-context="removeContext" @send-message="handleSendMessage"
+                @close="closeChatWindow" @drag-start="startChatDrag" @resize-start="startChatResize" />
         </Teleport>
 
         <div v-if="showUploadModal" class="modalBackdrop" @click.self="showUploadModal = false">
             <div class="modalCard">
                 <h3>Import Project Folder</h3>
-                <p>Drag a folder here or use the buttons below to import a project. External directories and OPFS are supported.</p>
+                <p>Drag a folder here or use the buttons below to import a project. External directories and OPFS are
+                    supported.
+                </p>
 
                 <div class="dropZone" @drop="handleDrop" @dragover="handleDragOver">Drop a folder here to import</div>
 
                 <div class="modalBtns">
                     <button class="btn" v-if="supportsFS" @click="pickFolderAndImport">Select folder</button>
-                    <label class="btn outline" v-else>Fallback import<input type="file" webkitdirectory directory multiple style="display:none" @change="handleFolderInput"></label>
+                    <label class="btn outline" v-else>Fallback import<input type="file" webkitdirectory directory
+                            multiple style="display:none" @change="handleFolderInput"></label>
                     <button class="btn ghost" @click="showUploadModal = false">Cancel</button>
                 </div>
-                <p class="hint" v-if="!supportsFS">Your browser does not support showDirectoryPicker. Use the fallback input instead.</p>
+                <p class="hint" v-if="!supportsFS">Your browser does not support showDirectoryPicker. Use the fallback
+                    input
+                    instead.</p>
             </div>
         </div>
     </div>
@@ -5721,7 +5487,7 @@ body,
     outline-offset: 2px;
 }
 
-.mainContent > * {
+.mainContent>* {
     min-height: 0;
     min-width: 0;
 }
@@ -5730,6 +5496,7 @@ body,
     .mainContent {
         flex-direction: column;
     }
+
     .toolColumn {
         flex-direction: row;
         width: 100%;
@@ -5738,26 +5505,33 @@ body,
         border-bottom: 1px solid #323232;
         justify-content: flex-start;
     }
+
     .toolColumn_btn {
         transform: none;
     }
+
     .toolColumn_btn--chat {
         margin-top: 0;
         margin-left: auto;
     }
+
     .settingsHeader {
         grid-template-columns: 1fr;
         align-items: flex-start;
     }
+
     .settingsClose {
         justify-self: start;
     }
+
     .ruleRow {
         grid-template-columns: 1fr;
     }
+
     .ruleCell--actions {
         justify-content: flex-start;
     }
+
     .workSpace {
         width: 100%;
         flex: 1 1 auto;
@@ -5787,7 +5561,7 @@ body,
     overflow-x: hidden;
 }
 
-.reportViewerContent--loading > :not(.reportViewerProcessingOverlay) {
+.reportViewerContent--loading> :not(.reportViewerProcessingOverlay) {
     filter: blur(1px);
     pointer-events: none;
 }
@@ -5849,6 +5623,7 @@ body,
     0% {
         transform: rotate(0deg);
     }
+
     100% {
         transform: rotate(360deg);
     }
@@ -5895,7 +5670,7 @@ body,
     min-height: 0;
 }
 
-.reportStructured > * {
+.reportStructured>* {
     align-self: stretch;
 }
 
@@ -6788,14 +6563,14 @@ body,
     padding: 10px 14px;
 }
 
-.reportRaw > summary {
+.reportRaw>summary {
     cursor: pointer;
     font-weight: 600;
     font-size: 13px;
     color: #cbd5f5;
 }
 
-.reportRaw > summary::marker {
+.reportRaw>summary::marker {
     color: #94a3b8;
 }
 
@@ -6829,7 +6604,7 @@ body,
     color: #e2e8f0;
 }
 
-.reportChunks > summary {
+.reportChunks>summary {
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
@@ -7511,75 +7286,4 @@ body,
     border-color: #93c5fd;
     color: #1d4ed8;
 }
-
 </style>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
