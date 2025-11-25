@@ -86,6 +86,38 @@ async function ensureUniqueIndex({ info, error }, table, indexName, definition) 
     }
 }
 
+async function cleanupSettingAiReviewLanguages({ info, error }) {
+    const removeInvalidStatement =
+        "DELETE FROM setting_ai_review WHERE language IS NULL OR TRIM(language) = '' OR language NOT IN ('SQL','Java')";
+    const removeInvalidPreview = formatStatement(removeInvalidStatement);
+    info(`[schema] Executing: ${removeInvalidPreview}`);
+    try {
+        const [result] = await pool.query(removeInvalidStatement);
+        info(`[schema] Success: ${removeInvalidPreview} (deleted ${result?.affectedRows ?? 0} rows)`);
+    } catch (err) {
+        error(`[schema] Failed: ${removeInvalidPreview}`, err);
+        throw err;
+    }
+
+    const dedupeStatement =
+        "DELETE t1 FROM setting_ai_review t1 " +
+        "JOIN (" +
+        "  SELECT language, MAX(id) AS max_id" +
+        "  FROM setting_ai_review" +
+        "  WHERE language IS NOT NULL AND TRIM(language) <> ''" +
+        "  GROUP BY language HAVING COUNT(*) > 1" +
+        ") keep ON t1.language = keep.language AND t1.id <> keep.max_id";
+    const dedupePreview = formatStatement(dedupeStatement);
+    info(`[schema] Executing: ${dedupePreview}`);
+    try {
+        const [result] = await pool.query(dedupeStatement);
+        info(`[schema] Success: ${dedupePreview} (deleted ${result?.affectedRows ?? 0} rows)`);
+    } catch (err) {
+        error(`[schema] Failed: ${dedupePreview}`, err);
+        throw err;
+    }
+}
+
 function formatStatement(statement) {
     const singleLine = statement.replace(/\s+/g, " ").trim();
     if (singleLine.length <= 120) {
@@ -129,6 +161,7 @@ export async function ensureSchema({ logger } = {}) {
         await ensureColumn({ info, error }, "reports", definition);
     }
 
+    await cleanupSettingAiReviewLanguages({ info, error });
     await ensureUniqueIndex(
         { info, error },
         "setting_ai_review",
