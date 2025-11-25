@@ -3192,6 +3192,10 @@ function insertAiReviewPlaceholder(key) {
     aiReviewState.message = `${placeholder} 已插入`;
 }
 
+function formatAiReviewPlaceholder(key) {
+    return key ? `{{${key}}}` : "";
+}
+
 function normaliseProjectId(projectId) {
     if (projectId === null || projectId === undefined) return "";
     return String(projectId);
@@ -4798,7 +4802,7 @@ onBeforeUnmount(() => {
                                                         :disabled="placeholder.used || aiReviewState.loading"
                                                         :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
                                                         @click="insertAiReviewPlaceholder(placeholder.key)">
-                                                        {{ `{{${placeholder.key}}}` }}
+                                                        {{ formatAiReviewPlaceholder(placeholder.key) }}
                                                     </button>
                                                     <span class="aiReviewPlaceholderDescription">{{ placeholder.description }}</span>
                                                     <span v-if="placeholder.used" class="aiReviewPlaceholderHint">此占位符已於模版中使用</span>
