@@ -2,6 +2,11 @@ import express from "express";
 import { createHash } from "node:crypto";
 import pool from "./lib/db.js";
 import { ensureSchema } from "./lib/ensureSchema.js";
+import {
+    clearAiReviewCaches,
+    getAiReviewRulesText,
+    getAiReviewTemplate
+} from "./lib/aiReviewTemplates.js";
 import { getDifyConfigSummary, partitionContent, requestDifyReport } from "./lib/difyClient.js";
 import { analyseSqlToReport, buildSqlReportPayload, isSqlPath } from "./lib/sqlAnalyzer.js";
 import { buildJavaSegments, isJavaPath } from "./lib/javaProcessor.js";
@@ -242,6 +247,15 @@ function normaliseSettingLanguage(language) {
     const value = typeof language === "string" ? language.trim().toUpperCase() : "";
     if (value === "JAVA") return "Java";
     return "SQL";
+}
+
+function buildAiReviewResolvers(language) {
+    const resolvedLanguage = normaliseSettingLanguage(language);
+    return {
+        language: resolvedLanguage,
+        loadAiReviewTemplate: () => getAiReviewTemplate(pool, resolvedLanguage),
+        loadAiReviewRules: () => getAiReviewRulesText(pool, resolvedLanguage)
+    };
 }
 
 function mapSettingRuleRow(row) {
@@ -1303,6 +1317,7 @@ app.post("/api/reports/dify", async (req, res, next) => {
             if (REPORT_DEBUG_LOGS) {
                 console.log(`[sql] Running static SQL analysis project=${projectId} path=${path}`);
             }
+            const aiReviewResolvers = buildAiReviewResolvers("SQL");
             let sqlAnalysis;
             try {
                 sqlAnalysis = await analyseSqlToReport(content, {
@@ -1310,7 +1325,8 @@ app.post("/api/reports/dify", async (req, res, next) => {
                     projectName,
                     path,
                     userId: resolvedUserId,
-                    files
+                    files,
+                    ...aiReviewResolvers
                 });
             } catch (error) {
                 console.error("[sql] Failed to analyse SQL", error);
@@ -1367,13 +1383,16 @@ app.post("/api/reports/dify", async (req, res, next) => {
             );
         }
 
+        const aiReviewResolvers = buildAiReviewResolvers(javaFile ? "Java" : "SQL");
+
         const result = await requestDifyReport({
             projectName: projectName || projectId,
             filePath: path,
             content,
             userId,
             segments,
-            files
+            files,
+            ...aiReviewResolvers
         });
         const resolvedGeneratedAt = result?.generatedAt || new Date().toISOString();
         const javaSnapshots = javaFile ? buildJavaReportSnapshots(result, resolvedGeneratedAt) : null;
@@ -1483,6 +1502,7 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
             if (REPORT_DEBUG_LOGS) {
                 console.log(`[sql] Running static SQL analysis for snippet project=${projectId} path=${path}`);
             }
+            const aiReviewResolvers = buildAiReviewResolvers("SQL");
             let sqlAnalysis;
             try {
                 sqlAnalysis = await analyseSqlToReport(normalised.content, {
@@ -1490,7 +1510,8 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
                     projectName,
                     path,
                     userId: resolvedUserId,
-                    files
+                    files,
+                    ...aiReviewResolvers
                 });
             } catch (error) {
                 console.error("[sql] Failed to analyse SQL snippet", error);
@@ -1535,6 +1556,8 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
             );
         }
 
+        const aiReviewResolvers = buildAiReviewResolvers(javaFile ? "Java" : "SQL");
+
         const result = await requestDifyReport({
             projectName: projectName || projectId,
             filePath: path,
@@ -1542,7 +1565,8 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
             userId,
             segments: normalisedSegments,
             files,
-            selection: normalised.meta
+            selection: normalised.meta,
+            ...aiReviewResolvers
         });
 
         res.json({
@@ -1627,6 +1651,7 @@ app.post("/api/settings/rules", async (req, res, next) => {
         }
 
         await connection.commit();
+        clearAiReviewCaches();
         res.json({ success: true, count: normalised.length, language });
     } catch (error) {
         await connection.rollback().catch(() => {});
@@ -1661,9 +1686,11 @@ app.post("/api/settings/ai-review", async (req, res, next) => {
         const codeBlock = typeof req.body?.codeBlock === "string" ? req.body.codeBlock : "";
         const [result] = await pool.query(
             `INSERT INTO setting_ai_review (language, code_block)
-             VALUES (?, ?)`,
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE code_block = VALUES(code_block), created_at = CURRENT_TIMESTAMP`,
             [language, codeBlock]
         );
+        clearAiReviewCaches();
         res.json({ success: true, id: result?.insertId || null, language });
     } catch (error) {
         next(error);

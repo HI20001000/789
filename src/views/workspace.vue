@@ -213,6 +213,7 @@ const settingLanguage = ref("SQL");
 const activeSettingTab = ref("rules");
 const ruleSettingsByLanguage = reactive({ SQL: [], Java: [] });
 const aiReviewContentByLanguage = reactive({ SQL: "", Java: "" });
+const aiReviewInputRef = ref(null);
 const ruleSettingsState = reactive({
     loading: false,
     saving: false,
@@ -251,6 +252,73 @@ const aiReviewPlaceholder = computed(() =>
         ? "輸入要送給 Dify 的 SQL 審查樣板"
         : "輸入 Java AI 審查時要傳送的程式碼範本"
 );
+const aiReviewPlaceholders = [
+    { key: "project_name", label: "專案名稱", description: "專案名稱", group: "basic", required: true },
+    { key: "file_path", label: "檔案路徑", description: "檔案路徑", group: "basic", required: true },
+    {
+        key: "chunk_index",
+        label: "片段索引",
+        description: "當前片段索引（從 1 開始）",
+        group: "basic",
+        required: true
+    },
+    { key: "chunk_total", label: "總片段數", description: "總片段數", group: "basic", required: true },
+    { key: "rules", label: "規則集", description: "該語言啟用的規則說明", group: "basic" },
+    { key: "chunk_start_line", label: "片段起始行", description: "片段起始行", group: "range" },
+    { key: "chunk_end_line", label: "片段結束行", description: "片段結束行", group: "range" },
+    { key: "chunk_start_column", label: "片段起始欄位", description: "片段起始欄位", group: "range" },
+    { key: "chunk_end_column", label: "片段結束欄位", description: "片段結束欄位", group: "range" },
+    {
+        key: "code_location",
+        label: "程式碼定位",
+        description: "若為 Java method，可包含 method / class / signature 標籤",
+        group: "range"
+    },
+    { key: "selection_start_line", label: "選取起始行", description: "使用者選取的起始行", group: "selection" },
+    { key: "selection_end_line", label: "選取結束行", description: "使用者選取的結束行", group: "selection" },
+    { key: "selection_start_column", label: "選取起始欄位", description: "選取起始欄位", group: "selection" },
+    { key: "selection_end_column", label: "選取結束欄位", description: "選取結束欄位", group: "selection" },
+    { key: "selection_line_count", label: "選取行數", description: "選取行數", group: "selection" },
+    { key: "selection_label", label: "選取標籤", description: "前端傳入的標籤（如 選取區段）", group: "selection" },
+    { key: "selection_code", label: "選取程式碼", description: "前端傳入的選取程式碼內容", group: "selection" }
+];
+const aiReviewPlaceholderGroups = [
+    { key: "basic", label: "基本占位符（每段必傳）" },
+    { key: "range", label: "片段範圍資訊（若可用則提供）" },
+    { key: "selection", label: "選取範圍（前端提供時附加）" }
+];
+const aiReviewPlaceholderUsage = computed(() => {
+    const text = typeof activeAiReviewContent.value === "string" ? activeAiReviewContent.value : "";
+    const matches = text.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g);
+    const tokens = new Set();
+    for (const match of matches) {
+        const token = match?.[1];
+        if (token) {
+            tokens.add(token);
+        }
+    }
+    return tokens;
+});
+const aiReviewPlaceholderPanels = computed(() =>
+    aiReviewPlaceholderGroups.map((group) => ({
+        ...group,
+        placeholders: aiReviewPlaceholders
+            .filter((entry) => entry.group === group.key)
+            .map((entry) => ({ ...entry, used: aiReviewPlaceholderUsage.value.has(entry.key) }))
+    }))
+);
+const aiReviewMissingRequiredPlaceholders = computed(() =>
+    aiReviewPlaceholders.filter((entry) => entry.required && !aiReviewPlaceholderUsage.value.has(entry.key))
+);
+const aiReviewPlaceholderStatusText = computed(() => {
+    if (aiReviewMissingRequiredPlaceholders.value.length) {
+        const missing = aiReviewMissingRequiredPlaceholders.value
+            .map((entry) => `{{${entry.key}}}`)
+            .join("、");
+        return `請插入必要占位符：${missing}`;
+    }
+    return "所有必填占位符已插入，可自由加入可選欄位。";
+});
 const reportProjectEntries = computed(() => {
     const list = Array.isArray(projects.value) ? projects.value : [];
     return list.map((project) => {
@@ -3081,6 +3149,12 @@ async function handleSaveAiReviewSetting() {
     const language = availableSettingLanguages.includes(settingLanguage.value)
         ? settingLanguage.value
         : "SQL";
+    const missingRequired = aiReviewMissingRequiredPlaceholders.value;
+    if (missingRequired.length) {
+        aiReviewState.message =
+            "請先插入所有必要占位符：" + missingRequired.map((entry) => `{{${entry.key}}}`).join("、");
+        return;
+    }
     aiReviewState.saving = true;
     aiReviewState.message = "";
     try {
@@ -3092,6 +3166,35 @@ async function handleSaveAiReviewSetting() {
     } finally {
         aiReviewState.saving = false;
     }
+}
+
+function insertAiReviewPlaceholder(key) {
+    if (!key) return;
+    if (aiReviewPlaceholderUsage.value.has(key)) {
+        aiReviewState.message = `{{${key}}} 已於模版中使用`;
+        return;
+    }
+    const placeholder = `{{${key}}}`;
+    const current = typeof activeAiReviewContent.value === "string" ? activeAiReviewContent.value : "";
+    const target = aiReviewInputRef.value;
+    if (target && typeof target.selectionStart === "number" && typeof target.selectionEnd === "number") {
+        const { selectionStart, selectionEnd } = target;
+        activeAiReviewContent.value =
+            current.slice(0, selectionStart) + placeholder + current.slice(selectionEnd, current.length);
+        nextTick(() => {
+            const caret = selectionStart + placeholder.length;
+            target.setSelectionRange(caret, caret);
+            target.focus();
+        });
+    } else {
+        const prefix = current && !current.endsWith("\n") ? "\n" : "";
+        activeAiReviewContent.value = `${current}${prefix}${placeholder}`;
+    }
+    aiReviewState.message = `${placeholder} 已插入`;
+}
+
+function formatAiReviewPlaceholder(key) {
+    return key ? `{{${key}}}` : "";
 }
 
 function normaliseProjectId(projectId) {
@@ -4684,7 +4787,32 @@ onBeforeUnmount(() => {
                             <template v-else>
                                 <div class="settingsCard">
                                     <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
+                                    <div class="aiReviewPlaceholderPanel">
+                                        <div class="aiReviewPlaceholderHeader">
+                                            <p class="aiReviewPlaceholderTitle">可用占位符</p>
+                                            <p class="aiReviewPlaceholderStatusText">{{ aiReviewPlaceholderStatusText }}</p>
+                                        </div>
+                                        <div v-for="group in aiReviewPlaceholderPanels" :key="group.key"
+                                            class="aiReviewPlaceholderGroup">
+                                            <p class="aiReviewPlaceholderGroupLabel">{{ group.label }}</p>
+                                            <ul class="aiReviewPlaceholderList">
+                                                <li v-for="placeholder in group.placeholders" :key="placeholder.key"
+                                                    class="aiReviewPlaceholderItem">
+                                                    <button type="button" class="aiReviewPlaceholderButton"
+                                                        :class="{ used: placeholder.used }"
+                                                        :disabled="placeholder.used || aiReviewState.loading"
+                                                        :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
+                                                        @click="insertAiReviewPlaceholder(placeholder.key)">
+                                                        {{ formatAiReviewPlaceholder(placeholder.key) }}
+                                                    </button>
+                                                    <span class="aiReviewPlaceholderDescription">{{ placeholder.description }}</span>
+                                                    <span v-if="placeholder.used" class="aiReviewPlaceholderHint">此占位符已於模版中使用</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
                                     <textarea id="aiReviewContent" v-model="activeAiReviewContent" class="aiReviewInput"
+                                        ref="aiReviewInputRef"
                                         rows="8" :placeholder="aiReviewPlaceholder"
                                         :disabled="aiReviewState.loading"></textarea>
 
@@ -5428,6 +5556,102 @@ body,
     background: #0f172a;
     color: #e5e7eb;
     box-sizing: border-box;
+}
+
+.aiReviewPlaceholderPanel {
+    margin: 6px 0 12px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #334155;
+    background: #0b1220;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.aiReviewPlaceholderHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.aiReviewPlaceholderTitle {
+    margin: 0;
+    color: #e5e7eb;
+    font-weight: 700;
+}
+
+.aiReviewPlaceholderStatusText {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 12px;
+}
+
+.aiReviewPlaceholderGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.aiReviewPlaceholderGroupLabel {
+    margin: 0;
+    font-weight: 600;
+    color: #cbd5e1;
+    font-size: 13px;
+}
+
+.aiReviewPlaceholderList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.aiReviewPlaceholderItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.aiReviewPlaceholderButton {
+    border: 1px dashed #4b5563;
+    background: #111827;
+    color: #e5e7eb;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.aiReviewPlaceholderButton:hover:not(:disabled) {
+    background: #1f2937;
+    border-color: #60a5fa;
+    color: #bfdbfe;
+}
+
+.aiReviewPlaceholderButton.used,
+.aiReviewPlaceholderButton:disabled {
+    border-color: #374151;
+    color: #94a3b8;
+    background: #0f172a;
+    cursor: not-allowed;
+}
+
+.aiReviewPlaceholderDescription {
+    color: #9ca3af;
+    font-size: 12px;
+}
+
+.aiReviewPlaceholderHint {
+    color: #f59e0b;
+    font-size: 12px;
 }
 
 .aiReviewInput {
