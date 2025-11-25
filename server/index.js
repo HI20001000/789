@@ -238,6 +238,33 @@ function clonePlainIssueList(issues) {
     return result;
 }
 
+function normaliseSettingLanguage(language) {
+    const value = typeof language === "string" ? language.trim().toUpperCase() : "";
+    if (value === "JAVA") return "Java";
+    return "SQL";
+}
+
+function mapSettingRuleRow(row) {
+    return {
+        id: Number(row.id) || 0,
+        ruleId: row.rule_id || "",
+        description: row.description || "",
+        enabled: Boolean(row.enabled),
+        riskIndicator: row.risk_indicator || "",
+        language: row.language || "SQL",
+        createdAt: toIsoString(row.created_at)
+    };
+}
+
+function mapAiReviewSettingRow(row) {
+    return {
+        id: Number(row.id) || 0,
+        language: row.language || "SQL",
+        codeBlock: row.code_block || "",
+        createdAt: toIsoString(row.created_at)
+    };
+}
+
 function clonePlainSnapshotList(entries) {
     if (!Array.isArray(entries)) {
         return [];
@@ -1528,6 +1555,118 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
         console.error("[dify] Failed to generate snippet report", error);
         const status = error?.message?.includes("not configured") ? 500 : 502;
         res.status(status).json({ message: error?.message || "Failed to generate snippet report" });
+    }
+});
+
+app.get("/api/settings/rules", async (req, res, next) => {
+    try {
+        const language = normaliseSettingLanguage(req.query?.language);
+        const [rows] = await pool.query(
+            `SELECT id, rule_id, description, enabled, risk_indicator, language, created_at
+             FROM setting_rules
+             WHERE language = ?
+             ORDER BY id ASC`,
+            [language]
+        );
+        res.json({ language, rules: rows.map(mapSettingRuleRow) });
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.post("/api/settings/rules", async (req, res, next) => {
+    const connection = await pool.getConnection();
+    try {
+        const language = normaliseSettingLanguage(req.body?.language);
+        const rules = Array.isArray(req.body?.rules) ? req.body.rules : [];
+        const normalised = rules
+            .map((rule) => ({
+                ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId ?? ""),
+                description: typeof rule?.description === "string" ? rule.description : "",
+                enabled: Boolean(rule?.enabled),
+                riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator : ""
+            }))
+            .filter((rule) => rule.ruleId || rule.description || rule.riskIndicator);
+
+        const missing = normalised.find(
+            (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
+        );
+        if (missing) {
+            res.status(400).json({ message: "規則ID、描述與風險指標皆為必填" });
+            return;
+        }
+
+        const seenRuleIds = new Set();
+        const duplicate = normalised.find((rule) => {
+            if (seenRuleIds.has(rule.ruleId)) return true;
+            seenRuleIds.add(rule.ruleId);
+            return false;
+        });
+        if (duplicate) {
+            res.status(400).json({ message: "規則ID 不可重覆" });
+            return;
+        }
+
+        await connection.beginTransaction();
+        await connection.query("DELETE FROM setting_rules WHERE language = ?", [language]);
+
+        if (normalised.length) {
+            const values = normalised.map((rule) => [
+                rule.ruleId,
+                rule.description,
+                rule.enabled ? 1 : 0,
+                rule.riskIndicator,
+                language
+            ]);
+
+            await connection.query(
+                `INSERT INTO setting_rules (rule_id, description, enabled, risk_indicator, language)
+                 VALUES ?`,
+                [values]
+            );
+        }
+
+        await connection.commit();
+        res.json({ success: true, count: normalised.length, language });
+    } catch (error) {
+        await connection.rollback().catch(() => {});
+        next(error);
+    } finally {
+        connection.release();
+    }
+});
+
+app.get("/api/settings/ai-review", async (req, res, next) => {
+    try {
+        const language = normaliseSettingLanguage(req.query?.language);
+        const [rows] = await pool.query(
+            `SELECT id, language, code_block, created_at
+             FROM setting_ai_review
+             WHERE language = ?
+             ORDER BY id DESC
+             LIMIT 1`,
+            [language]
+        );
+        const record = rows?.[0];
+        const payload = record ? mapAiReviewSettingRow(record) : { language, codeBlock: "", createdAt: null };
+        res.json(payload);
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.post("/api/settings/ai-review", async (req, res, next) => {
+    try {
+        const language = normaliseSettingLanguage(req.body?.language);
+        const codeBlock = typeof req.body?.codeBlock === "string" ? req.body.codeBlock : "";
+        const [result] = await pool.query(
+            `INSERT INTO setting_ai_review (language, code_block)
+             VALUES (?, ?)`,
+            [language, codeBlock]
+        );
+        res.json({ success: true, id: result?.insertId || null, language });
+    } catch (error) {
+        next(error);
     }
 });
 
