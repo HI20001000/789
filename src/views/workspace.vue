@@ -4604,6 +4604,22 @@ onBeforeUnmount(() => {
                         </g>
                     </svg>
                 </button>
+                <button
+                    type="button"
+                    class="toolColumn_btn toolColumn_btn--setting"
+                    :class="{ active: isSettingsViewActive }"
+                    @click="toggleSettingsView"
+                    :aria-pressed="isSettingsViewActive"
+                    title="Setting"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
+                        <path
+                            fill="currentColor"
+                            d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a6.63 6.63 0 0 0-1.6-.94L14.5 2h-5l-.36 2.19c-.58.24-1.12.56-1.6.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.07.63-.07.94s.02.63.07.94l-2.03 1.58 1.92 3.32 2.39-.96c.49.38 1.02.7 1.6.94L9.5 22h5l.36-2.19c.58-.24 1.12-.56 1.6-.94l2.39.96 1.92-3.32-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"
+                        />
+                    </svg>
+                </button>
             </nav>
             <PanelRail
                 v-if="!isSettingsViewActive"
