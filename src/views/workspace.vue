@@ -7,6 +7,12 @@ import { useAiAssistant } from "../scripts/composables/useAiAssistant.js";
 import * as fileSystemService from "../scripts/services/fileSystemService.js";
 import { generateReportViaDify, fetchProjectReports } from "../scripts/services/reportService.js";
 import {
+    fetchAiReviewSetting,
+    fetchSettingRules,
+    saveAiReviewSetting,
+    saveSettingRules
+} from "../scripts/services/apiService.js";
+import {
     buildSummaryDetailList,
     updateIssueSummaryTotals,
     buildCombinedReportPayload,
@@ -41,7 +47,7 @@ import {
 import { buildProjectPreviewIndex } from "../scripts/projectPreview/index.js";
 import PanelRail from "../components/workspace/PanelRail.vue";
 import ChatAiWindow from "../components/ChatAiWindow.vue";
-import ProjectPreviewPanel from "../compnenets/ProjectPreviewPanel.vue";
+import ProjectPreviewPanel from "../components/project/ProjectPreviewPanel.vue";
 
 const workspaceLogoModules = import.meta.glob("../assets/InfoMacro_logo.jpg", {
     eager: true,
@@ -147,6 +153,7 @@ let lastPointerDownWasOutsideCode = false;
 const showCodeLineNumbers = ref(true);
 const isChatWindowOpen = ref(false);
 const activeRailTool = ref("projects");
+const lastNonSettingsTool = ref("projects");
 const chatWindowState = reactive({ x: 0, y: 80, width: 420, height: 520 });
 const chatDragState = reactive({ active: false, offsetX: 0, offsetY: 0 });
 const chatResizeState = reactive({
@@ -187,14 +194,63 @@ const handleToggleDmlSection = (event) => {
 const isProjectToolActive = computed(() => activeRailTool.value === "projects");
 const isReportToolActive = computed(() => activeRailTool.value === "reports");
 const isPreviewToolActive = computed(() => activeRailTool.value === "preview");
+const isSettingsViewActive = computed(() => activeRailTool.value === "settings");
 const shouldPrepareReportTrees = computed(
     () => isProjectToolActive.value || isReportToolActive.value || isPreviewToolActive.value
 );
 const panelMode = computed(() => {
+    if (isSettingsViewActive.value) return "projects";
     if (isReportToolActive.value) return "reports";
     if (isPreviewToolActive.value) return "preview";
     return "projects";
 });
+const workSpaceClass = computed(() => ({
+    "workSpace--reports": isReportToolActive.value,
+    "workSpace--settings": isSettingsViewActive.value
+}));
+const availableSettingLanguages = ["SQL", "Java"];
+const settingLanguage = ref("SQL");
+const activeSettingTab = ref("rules");
+const ruleSettingsByLanguage = reactive({ SQL: [], Java: [] });
+const aiReviewContentByLanguage = reactive({ SQL: "", Java: "" });
+const ruleSettingsState = reactive({
+    loading: false,
+    saving: false,
+    message: "",
+    loaded: { SQL: false, Java: false }
+});
+const aiReviewState = reactive({
+    loading: false,
+    saving: false,
+    message: "",
+    loaded: { SQL: false, Java: false }
+});
+const activeRuleSettings = computed(() => {
+    const language = settingLanguage.value;
+    if (!Array.isArray(ruleSettingsByLanguage[language])) {
+        ruleSettingsByLanguage[language] = [];
+    }
+    return ruleSettingsByLanguage[language];
+});
+const activeAiReviewContent = computed({
+    get() {
+        return aiReviewContentByLanguage[settingLanguage.value] ?? "";
+    },
+    set(value) {
+        aiReviewContentByLanguage[settingLanguage.value] = value;
+    }
+});
+const ruleDescriptionPlaceholder = computed(() =>
+    settingLanguage.value === "SQL" ? "例如：避免使用 SELECT *" : "例如：確保資料庫連線關閉"
+);
+const riskIndicatorPlaceholder = computed(() =>
+    settingLanguage.value === "SQL" ? "高 / 中 / 低" : "Critical / Major / Minor"
+);
+const aiReviewPlaceholder = computed(() =>
+    settingLanguage.value === "SQL"
+        ? "輸入要送給 Dify 的 SQL 審查樣板"
+        : "輸入 Java AI 審查時要傳送的程式碼範本"
+);
 const reportProjectEntries = computed(() => {
     const list = Array.isArray(projects.value) ? projects.value : [];
     return list.map((project) => {
@@ -2833,6 +2889,18 @@ watch(selectedProjectId, (projectId) => {
     }
 });
 
+watch(isSettingsViewActive, (active) => {
+    if (active) {
+        ensureSettingsLoaded();
+    }
+});
+
+watch(settingLanguage, (language) => {
+    if (isSettingsViewActive.value) {
+        ensureSettingsLoaded(language);
+    }
+});
+
 function handleSelectProject(project) {
     if (!project) return;
     const currentId = selectedProjectId.value;
@@ -2857,20 +2925,173 @@ function handleSelectProject(project) {
 }
 
 function toggleProjectTool() {
-    if (isProjectToolActive.value) return;
-    activeRailTool.value = "projects";
+    if (isProjectToolActive.value && !isSettingsViewActive.value) return;
+    activateRailTool("projects");
 }
 
 function toggleReportTool() {
-    if (isReportToolActive.value) return;
-    activeRailTool.value = "reports";
+    if (isReportToolActive.value && !isSettingsViewActive.value) return;
+    activateRailTool("reports");
     isReportTreeCollapsed.value = true;
 }
 
 function togglePreviewTool() {
-    if (isPreviewToolActive.value) return;
-    activeRailTool.value = "preview";
+    if (isPreviewToolActive.value && !isSettingsViewActive.value) return;
+    activateRailTool("preview");
     isReportTreeCollapsed.value = true;
+}
+
+function toggleSettingsView() {
+    if (isSettingsViewActive.value) {
+        activateRailTool(lastNonSettingsTool.value || "projects");
+        return;
+    }
+    activateRailTool("settings");
+    ensureSettingsLoaded();
+}
+
+function activateRailTool(tool) {
+    if (tool !== "settings") {
+        lastNonSettingsTool.value = tool;
+    }
+    activeRailTool.value = tool;
+}
+
+function ensureSettingsLoaded(language = settingLanguage.value) {
+    const targetLanguage = availableSettingLanguages.includes(language) ? language : "SQL";
+    if (!ruleSettingsState.loaded[targetLanguage] && !ruleSettingsState.loading) {
+        loadRuleSettings(targetLanguage);
+    }
+    if (!aiReviewState.loaded[targetLanguage] && !aiReviewState.loading) {
+        loadAiReviewSettingContent(targetLanguage);
+    }
+}
+
+function createEmptyRule(language) {
+    return {
+        localId: `${language}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        ruleId: "",
+        description: "",
+        enabled: true,
+        riskIndicator: ""
+    };
+}
+
+async function loadRuleSettings(language = settingLanguage.value) {
+    const targetLanguage = availableSettingLanguages.includes(language) ? language : "SQL";
+    ruleSettingsState.loading = true;
+    try {
+        const response = await fetchSettingRules(targetLanguage);
+        const rules = Array.isArray(response?.rules) ? response.rules : [];
+        const hydrated = rules.map((rule, index) => ({
+            localId: `${targetLanguage}-${Date.now()}-${index}`,
+            ruleId: rule?.ruleId || "",
+            description: rule?.description || "",
+            enabled: Boolean(rule?.enabled),
+            riskIndicator: rule?.riskIndicator || ""
+        }));
+        ruleSettingsByLanguage[targetLanguage] = hydrated.length
+            ? hydrated
+            : [createEmptyRule(targetLanguage)];
+        ruleSettingsState.loaded[targetLanguage] = true;
+        ruleSettingsState.message = "";
+    } catch (error) {
+        safeAlertFail(error);
+    } finally {
+        ruleSettingsState.loading = false;
+    }
+}
+
+function addRuleRow() {
+    activeRuleSettings.value.push(createEmptyRule(settingLanguage.value));
+}
+
+function removeRuleRow(index) {
+    const list = activeRuleSettings.value;
+    if (!Array.isArray(list)) return;
+    list.splice(index, 1);
+}
+
+async function handleSaveRules() {
+    const language = availableSettingLanguages.includes(settingLanguage.value)
+        ? settingLanguage.value
+        : "SQL";
+    const rules = Array.isArray(activeRuleSettings.value) ? activeRuleSettings.value : [];
+    const payload = rules
+        .map((rule) => ({
+            ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId || ""),
+            description: typeof rule?.description === "string" ? rule.description : "",
+            enabled: Boolean(rule?.enabled),
+            riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator : ""
+        }))
+        .filter((rule) => {
+            const hasContent = rule.ruleId || rule.description || rule.riskIndicator;
+            return hasContent;
+        });
+
+    const missingRequired = payload.find(
+        (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
+    );
+    if (missingRequired) {
+        ruleSettingsState.message = "請完整填寫規則ID、描述與風險指標";
+        return;
+    }
+
+    const duplicates = new Set();
+    const hasDuplicateRuleId = payload.some((rule) => {
+        if (duplicates.has(rule.ruleId)) return true;
+        duplicates.add(rule.ruleId);
+        return false;
+    });
+    if (hasDuplicateRuleId) {
+        ruleSettingsState.message = "規則ID 不可重覆";
+        return;
+    }
+
+    ruleSettingsState.saving = true;
+    ruleSettingsState.message = "";
+    try {
+        await saveSettingRules(language, payload);
+        ruleSettingsState.message = "規則已保存";
+        ruleSettingsState.loaded[language] = true;
+    } catch (error) {
+        safeAlertFail(error);
+    } finally {
+        ruleSettingsState.saving = false;
+    }
+}
+
+async function loadAiReviewSettingContent(language = settingLanguage.value) {
+    const targetLanguage = availableSettingLanguages.includes(language) ? language : "SQL";
+    aiReviewState.loading = true;
+    try {
+        const response = await fetchAiReviewSetting(targetLanguage);
+        const content = typeof response?.codeBlock === "string" ? response.codeBlock : "";
+        aiReviewContentByLanguage[targetLanguage] = content;
+        aiReviewState.loaded[targetLanguage] = true;
+        aiReviewState.message = "";
+    } catch (error) {
+        safeAlertFail(error);
+    } finally {
+        aiReviewState.loading = false;
+    }
+}
+
+async function handleSaveAiReviewSetting() {
+    const language = availableSettingLanguages.includes(settingLanguage.value)
+        ? settingLanguage.value
+        : "SQL";
+    aiReviewState.saving = true;
+    aiReviewState.message = "";
+    try {
+        await saveAiReviewSetting(language, activeAiReviewContent.value || "");
+        aiReviewState.message = "AI 審查設定已保存";
+        aiReviewState.loaded[language] = true;
+    } catch (error) {
+        safeAlertFail(error);
+    } finally {
+        aiReviewState.saving = false;
+    }
 }
 
 function normaliseProjectId(projectId) {
@@ -3569,7 +3790,7 @@ function handlePreviewIssueSelect(payload) {
         return;
     }
 
-    activeRailTool.value = "reports";
+    activateRailTool("reports");
     isReportTreeCollapsed.value = true;
     selectReport(projectId, path);
 
@@ -4123,6 +4344,15 @@ function closeChatWindow() {
 }
 
 function toggleChatWindow() {
+    if (!isProjectToolActive.value) {
+        const message = "請先啟用「專案列表」後再使用 Chat AI。";
+        if (typeof safeAlertFail === "function") {
+            safeAlertFail(message);
+        } else {
+            alert(message);
+        }
+        return;
+    }
     if (isChatWindowOpen.value) return;
     if (!isChatToggleDisabled.value) {
         openChatWindow();
@@ -4290,7 +4520,11 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
-        <div class="mainContent themed-scrollbar" ref="mainContentRef">
+        <div
+            class="mainContent themed-scrollbar"
+            :class="{ 'mainContent--settings': isSettingsViewActive }"
+            ref="mainContentRef"
+        >
             <nav class="toolColumn">
                 <button
                     type="button"
@@ -4369,8 +4603,25 @@ onBeforeUnmount(() => {
                         />
                     </svg>
                 </button>
+                <button
+                    type="button"
+                    class="toolColumn_btn toolColumn_btn--setting"
+                    :class="{ active: isSettingsViewActive }"
+                    @click="toggleSettingsView"
+                    :aria-pressed="isSettingsViewActive"
+                    title="Setting"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />
+                        <path
+                            fill="currentColor"
+                            d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a6.63 6.63 0 0 0-1.6-.94L14.5 2h-5l-.36 2.19c-.58.24-1.12.56-1.6.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.07.63-.07.94s.02.63.07.94l-2.03 1.58 1.92 3.32 2.39-.96c.49.38 1.02.7 1.6.94L9.5 22h5l.36-2.19c.58-.24 1.12-.56 1.6-.94l2.39.96 1.92-3.32-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"
+                        />
+                    </svg>
+                </button>
             </nav>
             <PanelRail
+                v-if="!isSettingsViewActive"
                 :style-width="middlePaneStyle"
                 :mode="panelMode"
                 :projects="projects"
@@ -4399,8 +4650,172 @@ onBeforeUnmount(() => {
                 </template>
             </PanelRail>
 
-            <section class="workSpace" :class="{ 'workSpace--reports': isReportToolActive }">
-                <template v-if="isReportToolActive">
+            <section class="workSpace" :class="workSpaceClass">
+                <template v-if="isSettingsViewActive">
+                    <div class="settingsPanel">
+                        <div class="settingsHeader">
+                            <div>
+                                <div class="panelHeader">設定</div>
+                                <p class="settingsIntro">隱藏側邊欄後，集中調整規則引擎與 AI 審查模板。</p>
+                            </div>
+                            <div class="settingsLanguagePicker">
+                                <label class="settingsLabel" for="settingsLanguage">設定語言</label>
+                                <select id="settingsLanguage" v-model="settingLanguage">
+                                    <option v-for="lang in availableSettingLanguages" :key="lang" :value="lang">
+                                        {{ lang }}
+                                    </option>
+                                </select>
+                            </div>
+                            <button type="button" class="btn ghost settingsClose" @click="toggleSettingsView">
+                                返回工作區
+                            </button>
+                        </div>
+
+                        <div class="settingsTabs" role="tablist" aria-label="設定分頁">
+                            <button
+                                type="button"
+                                class="settingsTab"
+                                :class="{ active: activeSettingTab === 'rules' }"
+                                @click="activeSettingTab = 'rules'"
+                                role="tab"
+                                :aria-selected="activeSettingTab === 'rules'"
+                            >
+                                規則引擎
+                            </button>
+                            <button
+                                type="button"
+                                class="settingsTab"
+                                :class="{ active: activeSettingTab === 'ai-review' }"
+                                @click="activeSettingTab = 'ai-review'"
+                                role="tab"
+                                :aria-selected="activeSettingTab === 'ai-review'"
+                            >
+                                AI 審查
+                            </button>
+                        </div>
+
+                        <div class="settingsContent">
+                            <template v-if="activeSettingTab === 'rules'">
+                                <div class="settingsCard">
+                                    <div class="settingsActions">
+                                        <p class="settingsStatus" v-if="ruleSettingsState.loading">
+                                            規則載入中...
+                                        </p>
+                                        <p class="settingsStatus success" v-else-if="ruleSettingsState.message">
+                                            {{ ruleSettingsState.message }}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            class="btn outline"
+                                            @click="addRuleRow"
+                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving"
+                                        >
+                                            新增規則
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn"
+                                            @click="handleSaveRules"
+                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading"
+                                        >
+                                            {{ ruleSettingsState.saving ? "保存中..." : "保存規則" }}
+                                        </button>
+                                    </div>
+
+                                    <div class="ruleGrid" role="table" aria-label="規則列表">
+                                        <div class="ruleRow ruleRow--header" role="row">
+                                            <div class="ruleCell" role="columnheader">規則 ID</div>
+                                            <div class="ruleCell" role="columnheader">描述</div>
+                                            <div class="ruleCell" role="columnheader">啟用</div>
+                                            <div class="ruleCell" role="columnheader">風險指標</div>
+                                            <div class="ruleCell" role="columnheader">操作</div>
+                                        </div>
+                                        <div
+                                            v-for="(rule, index) in activeRuleSettings"
+                                            :key="rule.localId || `rule-${index}`"
+                                            class="ruleRow"
+                                            role="row"
+                                        >
+                                            <div class="ruleCell" role="cell">
+                                                <input
+                                                    v-model="rule.ruleId"
+                                                    type="text"
+                                                    class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} ID`"
+                                                    placeholder="R-001"
+                                                />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input
+                                                    v-model="rule.description"
+                                                    type="text"
+                                                    class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} 描述`"
+                                                    :placeholder="ruleDescriptionPlaceholder"
+                                                />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <label class="toggle">
+                                                    <input v-model="rule.enabled" type="checkbox" />
+                                                    <span>啟用</span>
+                                                </label>
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input
+                                                    v-model="rule.riskIndicator"
+                                                    type="text"
+                                                    class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} 風險指標`"
+                                                    :placeholder="riskIndicatorPlaceholder"
+                                                />
+                                            </div>
+                                            <div class="ruleCell ruleCell--actions" role="cell">
+                                                <button
+                                                    type="button"
+                                                    class="btn ghost"
+                                                    @click="removeRuleRow(index)"
+                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving"
+                                                >
+                                                    刪除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div class="settingsCard">
+                                    <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
+                                    <textarea
+                                        id="aiReviewContent"
+                                        v-model="activeAiReviewContent"
+                                        class="aiReviewInput"
+                                        rows="8"
+                                        :placeholder="aiReviewPlaceholder"
+                                        :disabled="aiReviewState.loading"
+                                    ></textarea>
+
+                                    <div class="settingsActions">
+                                        <p class="settingsStatus" v-if="aiReviewState.loading">設定載入中...</p>
+                                        <p class="settingsStatus success" v-else-if="aiReviewState.message">
+                                            {{ aiReviewState.message }}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            class="btn"
+                                            @click="handleSaveAiReviewSetting"
+                                            :disabled="aiReviewState.saving || aiReviewState.loading"
+                                        >
+                                            {{ aiReviewState.saving ? "保存中..." : "保存 AI 設定" }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+                <template v-else-if="isReportToolActive">
                     <div class="panelHeader">報告檢視</div>
                     <template v-if="hasReadyReports || viewerHasContent">
                         <div
@@ -4888,7 +5303,7 @@ onBeforeUnmount(() => {
 
         <Teleport to="body">
             <ChatAiWindow
-                :visible="isChatWindowOpen"
+                :visible="isChatWindowOpen && !isSettingsViewActive"
                 :floating-style="chatWindowStyle"
                 :context-items="contextItems"
                 :messages="messages"
@@ -5097,6 +5512,180 @@ body,
     flex-direction: column;
 }
 
+.workSpace--settings {
+    background: #131313;
+    border-color: #2f2f2f;
+}
+
+.settingsPanel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settingsHeader {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.settingsIntro {
+    margin: 6px 0 0;
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.settingsLanguagePicker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settingsLabel {
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.settingsLanguagePicker select {
+    background: #1f2937;
+    color: #e5e7eb;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 120px;
+}
+
+.settingsClose {
+    justify-self: end;
+}
+
+.settingsTabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid #2f2f2f;
+    padding-bottom: 4px;
+}
+
+.settingsTab {
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid #2f2f2f;
+    background: #1f2937;
+    color: #e5e7eb;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.settingsTab.active {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(14, 165, 233, 0.15));
+    border-color: rgba(14, 165, 233, 0.4);
+    color: #e0f2fe;
+}
+
+.settingsContent {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settingsCard {
+    background: #111827;
+    border: 1px solid #2f2f2f;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.settingsActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
+.settingsStatus {
+    margin-right: auto;
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.settingsStatus.success {
+    color: #4ade80;
+}
+
+.ruleGrid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ruleRow {
+    display: grid;
+    grid-template-columns: 1.1fr 2fr 0.9fr 1.2fr 0.8fr;
+    gap: 10px;
+    align-items: center;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1f2937;
+}
+
+.ruleRow:last-of-type {
+    border-bottom: none;
+}
+
+.ruleRow--header {
+    font-weight: 600;
+    color: #cbd5e1;
+    border-bottom-color: #334155;
+}
+
+.ruleCell {
+    display: flex;
+    align-items: center;
+}
+
+.ruleCell--actions {
+    justify-content: flex-end;
+}
+
+.ruleInput,
+.aiReviewInput,
+.settingsLanguagePicker select,
+.ruleCell input[type="text"],
+.settingsCard textarea {
+    font: inherit;
+}
+
+.ruleInput,
+.aiReviewInput {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e5e7eb;
+    box-sizing: border-box;
+}
+
+.aiReviewInput {
+    min-height: 160px;
+    resize: vertical;
+}
+
+.toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #e5e7eb;
+}
+
+.mainContent--settings {
+    column-gap: 12px;
+}
+
 .toolColumn {
     flex: 0 0 64px;
     width: 64px;
@@ -5140,6 +5729,10 @@ body,
     margin-top: auto;
 }
 
+.toolColumn_btn--setting {
+    margin-top: 4px;
+}
+
 .toolColumn_btn:hover {
     background: #2f2f2f;
     border-color: #4b5563;
@@ -5181,6 +5774,19 @@ body,
     .toolColumn_btn--chat {
         margin-top: 0;
         margin-left: auto;
+    }
+    .settingsHeader {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+    }
+    .settingsClose {
+        justify-self: start;
+    }
+    .ruleRow {
+        grid-template-columns: 1fr;
+    }
+    .ruleCell--actions {
+        justify-content: flex-start;
     }
     .workSpace {
         width: 100%;
