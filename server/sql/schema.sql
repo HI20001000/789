@@ -66,3 +66,24 @@ CREATE TABLE IF NOT EXISTS reports (
     CONSTRAINT fk_reports_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
+-- Settings for rule engine definitions per language
+CREATE TABLE IF NOT EXISTS setting_rules (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    rule_id VARCHAR(50),
+    description TEXT,
+    enabled BOOLEAN,
+    risk_indicator VARCHAR(50),
+    language ENUM('SQL','Java') DEFAULT 'SQL',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_setting_rules_language (language)
+);
+
+-- Settings for AI review payload templates per language
+CREATE TABLE IF NOT EXISTS setting_ai_review (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    language ENUM('SQL','Java'),
+    code_block TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_setting_ai_review_language (language)
+);
+

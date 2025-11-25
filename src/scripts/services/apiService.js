@@ -67,6 +67,24 @@ export async function fetchProjectFile(projectId, path) {
     return await request(`/projects/${encodeURIComponent(projectId)}/files?${query}`);
 }
 
+export async function fetchSettingRules(language) {
+    const query = new URLSearchParams({ language: language || "SQL" }).toString();
+    return await request(`/settings/rules?${query}`);
+}
+
+export async function saveSettingRules(language, rules) {
+    return await request("/settings/rules", { method: "POST", body: { language, rules } });
+}
+
+export async function fetchAiReviewSetting(language) {
+    const query = new URLSearchParams({ language: language || "SQL" }).toString();
+    return await request(`/settings/ai-review?${query}`);
+}
+
+export async function saveAiReviewSetting(language, codeBlock) {
+    return await request("/settings/ai-review", { method: "POST", body: { language, codeBlock } });
+}
+
 const apiService = {
     fetchProjects,
     createOrUpdateProject,
@@ -76,6 +94,10 @@ const apiService = {
     deleteProjectNodes,
     replaceProjectFiles,
     fetchProjectFile,
+    fetchSettingRules,
+    saveSettingRules,
+    fetchAiReviewSetting,
+    saveAiReviewSetting
 };
 
 export default apiService;
