@@ -1579,12 +1579,33 @@ app.post("/api/settings/rules", async (req, res, next) => {
     try {
         const language = normaliseSettingLanguage(req.body?.language);
         const rules = Array.isArray(req.body?.rules) ? req.body.rules : [];
-        const normalised = rules.map((rule) => ({
-            ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId ?? ""),
-            description: typeof rule?.description === "string" ? rule.description : "",
-            enabled: Boolean(rule?.enabled),
-            riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator : ""
-        }));
+        const normalised = rules
+            .map((rule) => ({
+                ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId ?? ""),
+                description: typeof rule?.description === "string" ? rule.description : "",
+                enabled: Boolean(rule?.enabled),
+                riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator : ""
+            }))
+            .filter((rule) => rule.ruleId || rule.description || rule.riskIndicator);
+
+        const missing = normalised.find(
+            (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
+        );
+        if (missing) {
+            res.status(400).json({ message: "規則ID、描述與風險指標皆為必填" });
+            return;
+        }
+
+        const seenRuleIds = new Set();
+        const duplicate = normalised.find((rule) => {
+            if (seenRuleIds.has(rule.ruleId)) return true;
+            seenRuleIds.add(rule.ruleId);
+            return false;
+        });
+        if (duplicate) {
+            res.status(400).json({ message: "規則ID 不可重覆" });
+            return;
+        }
 
         await connection.beginTransaction();
         await connection.query("DELETE FROM setting_rules WHERE language = ?", [language]);
