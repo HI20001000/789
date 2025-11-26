@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from "vue";
+import { exportProjectIssuesTreeToExcel } from "../../scripts/reports/exportExcel.js";
 
 const emit = defineEmits(["select-issue"]);
 
@@ -24,6 +25,7 @@ const props = defineProps({
 
 const hasPreviews = computed(() => (props.previews || []).length > 0);
 const expandedProjects = ref(new Set());
+const exportingProjects = ref(new Set());
 
 function isProjectExpanded(projectId) {
     const key = projectId === null || projectId === undefined ? "" : String(projectId);
@@ -40,6 +42,41 @@ function toggleProject(projectId) {
         next.add(key);
     }
     expandedProjects.value = next;
+}
+
+function isProjectExporting(projectId) {
+    const key = projectId === null || projectId === undefined ? "" : String(projectId);
+    return exportingProjects.value.has(key);
+}
+
+async function handleExportProject(entry) {
+    const key = entry?.project?.id;
+    const projectKey = key === null || key === undefined ? "" : String(key);
+    if (!projectKey) return;
+    if (!Array.isArray(entry?.reports) || !entry.reports.length) {
+        if (typeof window !== "undefined" && typeof window.alert === "function") {
+            window.alert("此專案沒有可匯出的報告");
+        }
+        return;
+    }
+    if (isProjectExporting(projectKey)) return;
+
+    const next = new Set(exportingProjects.value);
+    next.add(projectKey);
+    exportingProjects.value = next;
+
+    try {
+        await exportProjectIssuesTreeToExcel({ project: entry.project, reports: entry.reports });
+    } catch (error) {
+        console.error("[preview] 匯出專案報告失敗", error);
+        if (typeof window !== "undefined" && typeof window.alert === "function") {
+            window.alert("匯出報告時發生錯誤，請稍後再試");
+        }
+    } finally {
+        const updated = new Set(exportingProjects.value);
+        updated.delete(projectKey);
+        exportingProjects.value = updated;
+    }
 }
 
 function handleSelectIssue(entry, report, issue) {
@@ -79,7 +116,14 @@ function handleSelectIssue(entry, report, issue) {
                         <div class="previewProjectName" :title="entry.project.name">{{ entry.project.name }}</div>
                         <p class="previewProjectId">{{ entry.project.id }}</p>
                     </div>
-                    <span class="previewProjectBadge">問題 {{ entry.issueCount }}</span>
+                    <div class="previewProjectActions">
+                        <span class="previewProjectBadge">問題 {{ entry.issueCount }}</span>
+                        <button type="button" class="previewProjectExport"
+                            :disabled="isProjectExporting(entry.project.id)"
+                            @click="handleExportProject(entry)">
+                            {{ isProjectExporting(entry.project.id) ? "匯出中..." : "匯出報告" }}
+                        </button>
+                    </div>
                 </header>
                 <ol v-if="isProjectExpanded(entry.project.id)" class="previewReportList">
                     <li v-for="report in entry.reports" :key="`${entry.project.id}-${report.path}`"
@@ -197,6 +241,13 @@ function handleSelectIssue(entry, report, issue) {
     min-width: 0;
 }
 
+.previewProjectActions {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .previewProjectName {
     font-weight: 700;
     color: var(--panel-heading);
@@ -212,13 +263,35 @@ function handleSelectIssue(entry, report, issue) {
 }
 
 .previewProjectBadge {
-    flex: 0 0 auto;
     padding: 4px 8px;
     border-radius: 999px;
     border: 1px solid var(--panel-border-strong);
     background: rgba(148, 163, 184, 0.12);
     color: var(--panel-heading);
     font-size: 12px;
+}
+
+.previewProjectExport {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-surface-alt);
+    color: var(--panel-heading);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.previewProjectExport:hover:enabled {
+    background: var(--panel-accent-soft);
+    border-color: var(--panel-border-strong);
+    transform: translateY(-1px);
+}
+
+.previewProjectExport:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .previewReportList {
