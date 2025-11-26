@@ -192,6 +192,10 @@ function buildWorksheetXml(sheetInput) {
     const headerRows = Number.isInteger(sheetInput?.headerRows) ? Math.max(0, sheetInput.headerRows) : 0;
     const bodyStyleIndex = sheetInput?.bodyStyleIndex ?? 0;
     const headerStyleIndex = sheetInput?.headerStyleIndex ?? 1;
+    const columnWidths = Array.isArray(sheetInput?.columnWidths)
+        ? sheetInput.columnWidths.map((width) => (Number.isFinite(width) && width > 0 ? width : null))
+        : [];
+    const freezeHeader = sheetInput?.freezeHeader === true;
 
     const normalised = normaliseRows(rows);
     const rowXml = [];
@@ -220,13 +224,27 @@ function buildWorksheetXml(sheetInput) {
               .map((range) => `<mergeCell ref="${escapeXmlAttribute(range)}"/>`)
               .join("")}</mergeCells>`
         : "";
+    const colsXml = columnWidths.length
+        ? `<cols>${columnWidths
+              .map((width, index) =>
+                  width
+                      ? `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`
+                      : ""
+              )
+              .filter(Boolean)
+              .join("")}</cols>`
+        : "";
+    const sheetViewXml = freezeHeader
+        ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+        : `<sheetViews><sheetView workbookViewId="0"/></sheetViews>`;
 
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
         `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ` +
         `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
         `<dimension ref="${dimension}"/>` +
-        `<sheetViews><sheetView workbookViewId="0"/></sheetViews>` +
+        sheetViewXml +
         `<sheetFormatPr defaultRowHeight="15"/>` +
+        colsXml +
         `<sheetData>${rowXml.join("")}</sheetData>` +
         mergeXml +
         `<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>` +
@@ -240,15 +258,26 @@ function buildStylesXml() {
         `<font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>` +
         `<font><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/><b/></font>` +
         `</fonts>` +
-        `<fills count="2">` +
+        `<fills count="3">` +
         `<fill><patternFill patternType="none"/></fill>` +
         `<fill><patternFill patternType="solid"><fgColor rgb="FF2F5597"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/></patternFill></fill>` +
         `</fills>` +
-        `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
+        `<borders count="2">` +
+        `<border><left/><right/><top/><bottom/><diagonal/></border>` +
+        `<border>` +
+        `<left style="thin"><color rgb="FFE2E8F0"/></left>` +
+        `<right style="thin"><color rgb="FFE2E8F0"/></right>` +
+        `<top style="thin"><color rgb="FFE2E8F0"/></top>` +
+        `<bottom style="thin"><color rgb="FFE2E8F0"/></bottom>` +
+        `<diagonal/>` +
+        `</border>` +
+        `</borders>` +
         `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-        `<cellXfs count="2">` +
-        `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
-        `<xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<cellXfs count="3">` +
+        `<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="1" fillId="1" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="0" fillId="2" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
         `</cellXfs>` +
         `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
         `</styleSheet>`;
@@ -517,6 +546,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     const projectName = pickFirstString(project?.name, project?.id);
     const rows = [header];
     const merges = [];
+    const columnWidths = [18, 48, 12, 18, 18, 60, 52, 52];
 
     (Array.isArray(reports) ? reports : []).forEach((report) => {
         const filePath = pickFirstString(report?.path, report?.file, report?.filename);
@@ -614,7 +644,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
         }
     });
 
-    return { rows, merges };
+    return { rows, merges, columnWidths };
 }
 
 function buildKeyValueRows(items, headerLabel = "欄位", valueLabel = "內容") {
@@ -906,11 +936,22 @@ export async function exportAiReviewReportToExcel({ details, issues = [], metada
 }
 
 export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [] }) {
-    const { rows, merges } = buildIssuesTreeRowsFromProject(project, reports);
+    const { rows, merges, columnWidths } = buildIssuesTreeRowsFromProject(project, reports);
     if (rows.length <= 1) {
         throw new Error("缺少可匯出的問題資料");
     }
-    const sheets = [{ name: "IssuesTree", rows, merges, headerRows: 1, bodyStyleIndex: 0, headerStyleIndex: 1 }];
+    const sheets = [
+        {
+            name: "IssuesTree",
+            rows,
+            merges,
+            columnWidths,
+            headerRows: 1,
+            bodyStyleIndex: 0,
+            headerStyleIndex: 1,
+            freezeHeader: true
+        }
+    ];
     const metadata = { projectName: project.name ?? project.id ?? "", type: "IssuesTree" };
     await exportSheetsAsWorkbook({ sheets, metadata, fallbackType: "IssuesTree" });
 }
