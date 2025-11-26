@@ -259,7 +259,7 @@ function buildWorksheetXml(sheetInput) {
 }
 
 function buildStylesXml() {
-    // fill palette order: [placeholder, header (soft green), stripe A (soft yellow), body/white, stripe B (soft yellow alt)]
+    // fill palette order: [placeholder, header (soft pastel), stripe A (deep pastel yellow), body/white, stripe B (light pastel yellow)]
     // zebra striping alternates between stripe A/B via cellXf indices 2 & 3; header uses index 1
     return `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n` +
         `<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">` +
@@ -269,10 +269,10 @@ function buildStylesXml() {
         `</fonts>` +
         `<fills count=\"5\">` +
         `<fill><patternFill patternType=\"none\"/></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDCEFD8\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF4CC\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF3CC\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFEB9C\"/></patternFill></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFFFF\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFAE6\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF7D6\"/></patternFill></fill>` +
         `</fills>` +
         `<borders count=\"2\">` +
         `<border><left/><right/><top/><bottom/><diagonal/></border>` +
@@ -550,9 +550,9 @@ function buildIssuesTreeRowsFromProject(project, reports) {
         "project_name",
         "file_path",
         "severity",
+        "line",
         "rule_ids",
         "severity_levels",
-        "line",
         "issues",
         "recommendation",
         "fixed_code"
@@ -562,7 +562,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     const rows = [header];
     const rowStyleIndices = [undefined];
     const merges = [];
-    const columnWidths = [18, 48, 12, 18, 18, 12, 60, 52, 52];
+    const columnWidths = [18, 48, 12, 12, 18, 18, 60, 52, 52];
 
     let currentGroupKey = "";
     let currentStripeIndex = 2; // default stripe A; flips to 3 on each new group
@@ -606,7 +606,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
 
             for (let index = 0; index < rowCount; index += 1) {
                 const subIssue = childIssues[index];
-                const subSeverity = severityLevels[index] ?? "";
+                const subSeverity = severityLevels[index] ?? severity;
                 const subRuleId = ruleIds[index] ?? "";
                 const subLine = normaliseLineLabel(
                     subIssue?.line ??
@@ -637,23 +637,23 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                 rows.push([
                     projectName,
                     filePath,
-                    severity,
-                    subRuleId,
                     subSeverity,
                     subLine,
+                    subRuleId,
+                    subSeverity,
                     subIssueText,
                     recommendation,
                     fixedCode
                 ]);
 
-                // styles: 2 = stripe A (#FFF4CC), 3 = stripe B (#FFFAE6)
+                // styles: 2 = stripe A (#FFFFEB9C), 3 = stripe B (#FFFFF7D6)
                 rowStyleIndices.push(currentStripeIndex);
             }
 
         });
     });
 
-    const mergeColumns = [0, 1, 2];
+    const mergeColumns = [0, 1];
     mergeColumns.forEach((columnIndex) => {
         let startIndex = 1; // skip header row
         let previousValue = rows[startIndex]?.[columnIndex];
@@ -684,6 +684,43 @@ function buildIssuesTreeRowsFromProject(project, reports) {
             merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
         }
     });
+
+    const addPairedMerges = (primaryIndex, secondaryIndex) => {
+        let startIndex = 1;
+        let previousPrimary = rows[startIndex]?.[primaryIndex];
+        let previousSecondary = rows[startIndex]?.[secondaryIndex];
+
+        for (let rowIndex = startIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+            const currentPrimary = rows[rowIndex]?.[primaryIndex];
+            const currentSecondary = rows[rowIndex]?.[secondaryIndex];
+            const isSamePair = currentPrimary === previousPrimary && currentSecondary === previousSecondary;
+            const hasPrimary = previousPrimary !== undefined && previousPrimary !== "";
+
+            if (!isSamePair && hasPrimary && rowIndex - startIndex > 1) {
+                const columnLetter = toColumnLetter(primaryIndex);
+                const startRow = startIndex + 1;
+                const endRow = rowIndex;
+                merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
+            }
+
+            if (!isSamePair) {
+                startIndex = rowIndex;
+                previousPrimary = currentPrimary;
+                previousSecondary = currentSecondary;
+            }
+        }
+
+        const hasPrimary = previousPrimary !== undefined && previousPrimary !== "";
+        if (hasPrimary && rows.length - startIndex > 1) {
+            const columnLetter = toColumnLetter(primaryIndex);
+            const startRow = startIndex + 1;
+            const endRow = rows.length;
+            merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
+        }
+    };
+
+    addPairedMerges(2, 3); // merge severity only when line matches
+    addPairedMerges(3, 2); // merge line only when severity matches
 
     return { rows, merges, columnWidths, rowStyleIndices };
 }
