@@ -189,6 +189,9 @@ function buildWorksheetXml(sheetInput) {
     const merges = Array.isArray(sheetInput?.merges)
         ? sheetInput.merges.filter((entry) => typeof entry === "string" && entry.trim())
         : [];
+    const headerRows = Number.isInteger(sheetInput?.headerRows) ? Math.max(0, sheetInput.headerRows) : 0;
+    const bodyStyleIndex = sheetInput?.bodyStyleIndex ?? 0;
+    const headerStyleIndex = sheetInput?.headerStyleIndex ?? 1;
 
     const normalised = normaliseRows(rows);
     const rowXml = [];
@@ -197,11 +200,14 @@ function buildWorksheetXml(sheetInput) {
     normalised.forEach((cells, rowIndex) => {
         const rowNumber = rowIndex + 1;
         maxColumnCount = Math.max(maxColumnCount, cells.length);
+        const isHeaderRow = rowIndex < headerRows;
+        const styleIndex = isHeaderRow ? headerStyleIndex : bodyStyleIndex;
+        const styleAttribute = Number.isInteger(styleIndex) ? ` s="${styleIndex}"` : "";
         const cellXml = cells.map((cellValue, cellIndex) => {
             const column = toColumnLetter(cellIndex);
             const cellRef = `${column}${rowNumber}`;
             const text = escapeXmlText(cellValue);
-            return `<c r="${cellRef}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+            return `<c r="${cellRef}" t="inlineStr"${styleAttribute}><is><t xml:space="preserve">${text}</t></is></c>`;
         });
         rowXml.push(`<row r="${rowNumber}">${cellXml.join("")}</row>`);
     });
@@ -230,11 +236,20 @@ function buildWorksheetXml(sheetInput) {
 function buildStylesXml() {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
         `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-        `<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font></fonts>` +
-        `<fills count="1"><fill><patternFill patternType="none"/></fill></fills>` +
+        `<fonts count="2">` +
+        `<font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>` +
+        `<font><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/><b/></font>` +
+        `</fonts>` +
+        `<fills count="2">` +
+        `<fill><patternFill patternType="none"/></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FF2F5597"/></patternFill></fill>` +
+        `</fills>` +
         `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
         `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-        `<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>` +
+        `<cellXfs count="2">` +
+        `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `</cellXfs>` +
         `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
         `</styleSheet>`;
 }
@@ -895,7 +910,7 @@ export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [
     if (rows.length <= 1) {
         throw new Error("缺少可匯出的問題資料");
     }
-    const sheets = [{ name: "IssuesTree", rows, merges }];
+    const sheets = [{ name: "IssuesTree", rows, merges, headerRows: 1, bodyStyleIndex: 0, headerStyleIndex: 1 }];
     const metadata = { projectName: project.name ?? project.id ?? "", type: "IssuesTree" };
     await exportSheetsAsWorkbook({ sheets, metadata, fallbackType: "IssuesTree" });
 }
