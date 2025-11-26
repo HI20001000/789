@@ -5763,7 +5763,7 @@ body,
 }
 
 .mainContent--settings {
-    column-gap: 12px;
+    column-gap: 0px;
 }
 
 .toolColumn {
