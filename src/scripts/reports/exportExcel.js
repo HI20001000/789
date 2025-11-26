@@ -1,4 +1,121 @@
-import JSZip from "jszip";
+const CRC32_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+        let value = index;
+        for (let bit = 0; bit < 8; bit += 1) {
+            value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+        }
+        table[index] = value >>> 0;
+    }
+    return table;
+})();
+
+function crc32(bytes) {
+    let crc = -1;
+    for (let index = 0; index < bytes.length; index += 1) {
+        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ bytes[index]) & 0xff];
+    }
+    return (crc ^ -1) >>> 0;
+}
+
+function toDosDateTime(date = new Date()) {
+    const year = Math.max(1980, date.getFullYear());
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = Math.floor(date.getSeconds() / 2);
+    const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+    const dosTime = (hours << 11) | (minutes << 5) | seconds;
+    return { dosDate, dosTime };
+}
+
+function concatUint8Arrays(arrays) {
+    const totalLength = arrays.reduce((sum, entry) => sum + entry.length, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    arrays.forEach((entry) => {
+        combined.set(entry, offset);
+        offset += entry.length;
+    });
+    return combined;
+}
+
+function createZipBlob(entries) {
+    const encoder = new TextEncoder();
+    const fileChunks = [];
+    const centralChunks = [];
+    let offset = 0;
+
+    entries.forEach((entry) => {
+        const nameBytes = encoder.encode((entry?.path || "").replace(/^\/+/, ""));
+        const dataBytes =
+            entry?.content instanceof Uint8Array
+                ? entry.content
+                : encoder.encode(String(entry?.content ?? ""));
+        const { dosDate, dosTime } = toDosDateTime(entry?.date ? new Date(entry.date) : new Date());
+        const checksum = crc32(dataBytes);
+
+        const localHeader = new Uint8Array(30);
+        const localView = new DataView(localHeader.buffer);
+        localView.setUint32(0, 0x04034b50, true);
+        localView.setUint16(4, 20, true);
+        localView.setUint16(6, 0, true);
+        localView.setUint16(8, 0, true);
+        localView.setUint16(10, dosTime, true);
+        localView.setUint16(12, dosDate, true);
+        localView.setUint32(14, checksum, true);
+        localView.setUint32(18, dataBytes.length, true);
+        localView.setUint32(22, dataBytes.length, true);
+        localView.setUint16(26, nameBytes.length, true);
+        localView.setUint16(28, 0, true);
+
+        const fileOffset = offset;
+        fileChunks.push(localHeader, nameBytes, dataBytes);
+        offset += localHeader.length + nameBytes.length + dataBytes.length;
+
+        const centralHeader = new Uint8Array(46);
+        const centralView = new DataView(centralHeader.buffer);
+        centralView.setUint32(0, 0x02014b50, true);
+        centralView.setUint16(4, 20, true);
+        centralView.setUint16(6, 20, true);
+        centralView.setUint16(8, 0, true);
+        centralView.setUint16(10, 0, true);
+        centralView.setUint16(12, dosTime, true);
+        centralView.setUint16(14, dosDate, true);
+        centralView.setUint32(16, checksum, true);
+        centralView.setUint32(20, dataBytes.length, true);
+        centralView.setUint32(24, dataBytes.length, true);
+        centralView.setUint16(28, nameBytes.length, true);
+        centralView.setUint16(30, 0, true);
+        centralView.setUint16(32, 0, true);
+        centralView.setUint16(34, 0, true);
+        centralView.setUint16(36, 0, true);
+        centralView.setUint32(38, 0, true);
+        centralView.setUint32(42, fileOffset, true);
+
+        centralChunks.push(centralHeader, nameBytes);
+    });
+
+    const centralDirectoryStart = offset;
+    const centralDirectorySize = centralChunks.reduce((sum, entry) => sum + entry.length, 0);
+    offset += centralDirectorySize;
+
+    const endRecord = new Uint8Array(22);
+    const endView = new DataView(endRecord.buffer);
+    const fileCount = entries.length;
+    endView.setUint32(0, 0x06054b50, true);
+    endView.setUint16(4, 0, true);
+    endView.setUint16(6, 0, true);
+    endView.setUint16(8, fileCount, true);
+    endView.setUint16(10, fileCount, true);
+    endView.setUint32(12, centralDirectorySize, true);
+    endView.setUint32(16, centralDirectoryStart, true);
+    endView.setUint16(20, 0, true);
+
+    const zipBytes = concatUint8Arrays([...fileChunks, ...centralChunks, endRecord]);
+    return new Blob([zipBytes], { type: "application/zip" });
+}
 
 function ensureArray(value) {
     if (Array.isArray(value)) {
@@ -175,27 +292,27 @@ async function createWorkbookBlob(sheets) {
         throw new Error("No sheets provided for export.");
     }
 
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", buildContentTypesXml(sheets.length));
-    zip.folder("_rels").file(".rels", buildRootRelsXml());
-
-    const xlFolder = zip.folder("xl");
-    xlFolder.file("styles.xml", buildStylesXml());
-
     const preparedSheets = sheets.map((sheet, index) => {
         const name = sanitiseSheetName(sheet.name, `Sheet${index + 1}`);
         return { ...sheet, name };
     });
 
-    xlFolder.file("workbook.xml", buildWorkbookXml(preparedSheets));
-    xlFolder.folder("_rels").file("workbook.xml.rels", buildWorkbookRelsXml(preparedSheets));
+    const entries = [
+        { path: "[Content_Types].xml", content: buildContentTypesXml(sheets.length) },
+        { path: "_rels/.rels", content: buildRootRelsXml() },
+        { path: "xl/styles.xml", content: buildStylesXml() },
+        { path: "xl/workbook.xml", content: buildWorkbookXml(preparedSheets) },
+        { path: "xl/_rels/workbook.xml.rels", content: buildWorkbookRelsXml(preparedSheets) }
+    ];
 
-    const worksheetsFolder = xlFolder.folder("worksheets");
     preparedSheets.forEach((sheet, index) => {
-        worksheetsFolder.file(`sheet${index + 1}.xml`, buildWorksheetXml(sheet.rows));
+        entries.push({
+            path: `xl/worksheets/sheet${index + 1}.xml`,
+            content: buildWorksheetXml(sheet.rows)
+        });
     });
 
-    return zip.generateAsync({ type: "blob" });
+    return createZipBlob(entries);
 }
 
 function triggerDownload(blob, filename) {
@@ -244,6 +361,66 @@ function toMultiline(value) {
         return value;
     }
     return String(value);
+}
+
+function safeStringifyList(value) {
+    try {
+        return JSON.stringify(Array.isArray(value) ? value : []);
+    } catch (error) {
+        console.warn("[excel] Failed to stringify list", error, value);
+        return "[]";
+    }
+}
+
+function normaliseLineLabel(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+    }
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return "";
+        const match = trimmed.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+        if (match) {
+            const start = Number(match[1]);
+            const end = match[2] ? Number(match[2]) : start;
+            if (Number.isFinite(start) && Number.isFinite(end)) {
+                const safeStart = Math.min(start, end);
+                const safeEnd = Math.max(start, end);
+                return safeStart === safeEnd ? String(safeStart) : `${safeStart}-${safeEnd}`;
+            }
+        }
+        return trimmed;
+    }
+    if (Array.isArray(value)) {
+        const [first, second] = value;
+        const start = Number(first);
+        const end = second === undefined ? start : Number(second);
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+            const safeStart = Math.min(start, end);
+            const safeEnd = Math.max(start, end);
+            return safeStart === safeEnd ? String(safeStart) : `${safeStart}-${safeEnd}`;
+        }
+    }
+    if (typeof value === "object") {
+        const start = Number(
+            value.start ?? value.begin ?? value.from ?? value.line ?? value.lineStart ?? value.startLine
+        );
+        const end = Number(
+            value.end ?? value.finish ?? value.to ?? value.lineEnd ?? value.line_finish ?? value.lineEndNumber
+        );
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+            const safeStart = Math.min(start, end);
+            const safeEnd = Math.max(start, end);
+            return safeStart === safeEnd ? String(safeStart) : `${safeStart}-${safeEnd}`;
+        }
+        if (Number.isFinite(start)) {
+            return String(start);
+        }
+    }
+    return "";
 }
 
 function pickFirstString(...candidates) {
@@ -297,6 +474,82 @@ function buildIssueRows(issues) {
         });
     }
     return rows.length > 1 ? rows : [];
+}
+
+function buildIssuesTreeRowsFromProject(project, reports) {
+    const header = [
+        "project_name",
+        "path",
+        "severity",
+        "message",
+        "sub_severity_level",
+        "sub_rule_id",
+        "sub_issue_text",
+        "recommendation",
+        "fixed_code"
+    ];
+
+    const projectName = pickFirstString(project?.name, project?.id);
+    const rows = [header];
+
+    (Array.isArray(reports) ? reports : []).forEach((report) => {
+        const path = pickFirstString(report?.path, report?.file, report?.filename);
+        const issues = Array.isArray(report?.issues) ? report.issues : [];
+
+        issues.forEach((issue) => {
+            const raw = issue?.raw || issue || {};
+            const severityLevels = Array.isArray(raw.severity_levels)
+                ? raw.severity_levels.map((item) => (typeof item === "string" ? item : String(item))).filter(Boolean)
+                : [];
+            const ruleIds = Array.isArray(raw.rule_ids)
+                ? raw.rule_ids.map((item) => (typeof item === "string" ? item : String(item))).filter(Boolean)
+                : [];
+            const childIssues = Array.isArray(raw.issues) ? raw.issues : [];
+
+            const severity = pickFirstString(raw.severity, raw.level, severityLevels);
+            const message = pickFirstString(raw.message, raw.title, childIssues);
+            const recommendation = toMultiline(
+                raw.recommendation ?? raw.fix_suggestion ?? raw.suggestion ?? raw.suggest
+            );
+            const fixedCode = toMultiline(raw.fixed_code ?? raw.fix_code ?? raw.fix);
+
+            const rowCount = Math.max(severityLevels.length, ruleIds.length, childIssues.length, 1);
+            for (let index = 0; index < rowCount; index += 1) {
+                const subIssue = childIssues[index];
+                const subSeverity = severityLevels[index] ?? "";
+                const subRuleId = ruleIds[index] ?? "";
+                let subIssueText = "";
+                if (typeof subIssue === "string" || typeof subIssue === "number") {
+                    subIssueText = String(subIssue);
+                } else if (subIssue && typeof subIssue === "object") {
+                    try {
+                        subIssueText = pickFirstString(
+                            subIssue.message,
+                            subIssue.text,
+                            subIssue.label,
+                            JSON.stringify(subIssue)
+                        );
+                    } catch (_error) {
+                        subIssueText = pickFirstString(subIssue.message, subIssue.text, subIssue.label, "");
+                    }
+                }
+
+                rows.push([
+                    projectName,
+                    path,
+                    severity,
+                    message,
+                    subSeverity,
+                    subRuleId,
+                    subIssueText,
+                    recommendation,
+                    fixedCode
+                ]);
+            }
+        });
+    });
+
+    return rows;
 }
 
 function buildKeyValueRows(items, headerLabel = "欄位", valueLabel = "內容") {
@@ -587,8 +840,19 @@ export async function exportAiReviewReportToExcel({ details, issues = [], metada
     await exportSheetsAsWorkbook({ sheets, metadata: { ...metadata, type: "ai-review" }, fallbackType: "ai" });
 }
 
+export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [] }) {
+    const rows = buildIssuesTreeRowsFromProject(project, reports);
+    if (rows.length <= 1) {
+        throw new Error("缺少可匯出的問題資料");
+    }
+    const sheets = [{ name: "IssuesTree", rows }];
+    const metadata = { projectName: project.name ?? project.id ?? "", type: "IssuesTree" };
+    await exportSheetsAsWorkbook({ sheets, metadata, fallbackType: "IssuesTree" });
+}
+
 export default {
     exportCombinedReportToExcel,
     exportStaticReportToExcel,
-    exportAiReviewReportToExcel
+    exportAiReviewReportToExcel,
+    exportProjectIssuesTreeToExcel
 };
