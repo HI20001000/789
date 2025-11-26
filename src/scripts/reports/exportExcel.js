@@ -476,70 +476,48 @@ function buildIssueRows(issues) {
     return rows.length > 1 ? rows : [];
 }
 
-function buildIssuesTreeRowsFromProject(reports) {
+function buildIssuesTreeRowsFromProject(project, reports) {
     const header = [
-        "issue_id",
-        "issue_severity",
-        "issue_message",
-        "issue_object",
-        "issue_line",
-        "issue_snippet",
-        "issue_evidence",
-        "issue_fixed_code",
-        "issue_chunk_index",
-        "issue_rule_ids_json",
-        "issue_severity_levels_json",
-        "sub_index",
-        "sub_rule_id",
+        "project_name",
+        "path",
+        "severity",
+        "message",
         "sub_severity_level",
+        "sub_rule_id",
         "sub_issue_text",
-        "sub_recommendation",
-        "sub_type"
+        "recommendation",
+        "fixed_code"
     ];
 
+    const projectName = pickFirstString(project?.name, project?.id);
     const rows = [header];
-    let issueId = 1;
+
     (Array.isArray(reports) ? reports : []).forEach((report) => {
+        const path = pickFirstString(report?.path, report?.file, report?.filename);
         const issues = Array.isArray(report?.issues) ? report.issues : [];
+
         issues.forEach((issue) => {
             const raw = issue?.raw || issue || {};
-            const ruleIds = Array.isArray(raw.rule_ids)
-                ? raw.rule_ids.map((item) => (typeof item === "string" ? item : String(item))).filter(Boolean)
-                : [];
             const severityLevels = Array.isArray(raw.severity_levels)
                 ? raw.severity_levels.map((item) => (typeof item === "string" ? item : String(item))).filter(Boolean)
                 : [];
+            const ruleIds = Array.isArray(raw.rule_ids)
+                ? raw.rule_ids.map((item) => (typeof item === "string" ? item : String(item))).filter(Boolean)
+                : [];
             const childIssues = Array.isArray(raw.issues) ? raw.issues : [];
-            const recommendations = Array.isArray(raw.recommendation) ? raw.recommendation : [];
-            const useRecommendation = recommendations.length === childIssues.length;
 
             const severity = pickFirstString(raw.severity, raw.level, severityLevels);
-            const message = pickFirstString(raw.message, raw.title, Array.isArray(raw.issues) ? raw.issues[0] : "");
-            const object = pickFirstString(
-                raw.object,
-                raw.target,
-                raw.function,
-                raw.method,
-                raw.field,
-                raw.variable,
-                raw.path
+            const message = pickFirstString(raw.message, raw.title, childIssues);
+            const recommendation = toMultiline(
+                raw.recommendation ?? raw.fix_suggestion ?? raw.suggestion ?? raw.suggest
             );
-            const line = normaliseLineLabel(
-                raw.line ?? raw.line_range ?? raw.lineRange ?? raw.range ?? raw.line_no ?? raw.lineNo
-            );
-            const snippet = toMultiline(raw.snippet ?? raw.statement ?? raw.sql);
-            const evidence = toMultiline(raw.evidence ?? raw.evidence_list ?? raw.evidenceList);
             const fixedCode = toMultiline(raw.fixed_code ?? raw.fix_code ?? raw.fix);
-            const chunkIndex = raw.chunk_index ?? raw.chunkIndex ?? "";
-            const ruleIdsJson = safeStringifyList(ruleIds);
-            const severityLevelsJson = safeStringifyList(severityLevels);
 
-            const totalChildren = Math.max(childIssues.length, 1);
-            for (let index = 0; index < totalChildren; index += 1) {
+            const rowCount = Math.max(severityLevels.length, ruleIds.length, childIssues.length, 1);
+            for (let index = 0; index < rowCount; index += 1) {
                 const subIssue = childIssues[index];
-                const subRuleId = ruleIds[index] ?? "";
                 const subSeverity = severityLevels[index] ?? "";
-                const subRecommendation = useRecommendation ? recommendations[index] ?? "" : "";
+                const subRuleId = ruleIds[index] ?? "";
                 let subIssueText = "";
                 if (typeof subIssue === "string" || typeof subIssue === "number") {
                     subIssueText = String(subIssue);
@@ -557,27 +535,17 @@ function buildIssuesTreeRowsFromProject(reports) {
                 }
 
                 rows.push([
-                    issueId,
+                    projectName,
+                    path,
                     severity,
                     message,
-                    object,
-                    line,
-                    snippet,
-                    evidence,
-                    fixedCode,
-                    chunkIndex,
-                    ruleIdsJson,
-                    severityLevelsJson,
-                    index + 1,
-                    subRuleId,
                     subSeverity,
+                    subRuleId,
                     subIssueText,
-                    subRecommendation,
-                    "sub_issue"
+                    recommendation,
+                    fixedCode
                 ]);
             }
-
-            issueId += 1;
         });
     });
 
@@ -873,7 +841,7 @@ export async function exportAiReviewReportToExcel({ details, issues = [], metada
 }
 
 export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [] }) {
-    const rows = buildIssuesTreeRowsFromProject(reports);
+    const rows = buildIssuesTreeRowsFromProject(project, reports);
     if (rows.length <= 1) {
         throw new Error("缺少可匯出的問題資料");
     }
