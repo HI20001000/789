@@ -195,6 +195,7 @@ function buildWorksheetXml(sheetInput) {
     const rowStyleIndices = Array.isArray(sheetInput?.rowStyleIndices)
         ? sheetInput.rowStyleIndices
         : [];
+    const cellStyleMatrix = Array.isArray(sheetInput?.cellStyleMatrix) ? sheetInput.cellStyleMatrix : null;
     const columnWidths = Array.isArray(sheetInput?.columnWidths)
         ? sheetInput.columnWidths.map((width) => (Number.isFinite(width) && width > 0 ? width : null))
         : [];
@@ -208,17 +209,21 @@ function buildWorksheetXml(sheetInput) {
         const rowNumber = rowIndex + 1;
         maxColumnCount = Math.max(maxColumnCount, cells.length);
         const isHeaderRow = rowIndex < headerRows;
-        const styleIndex = isHeaderRow
+        const baseStyleIndex = isHeaderRow
             ? headerStyleIndex
             : Number.isInteger(rowStyleIndices[rowIndex])
             ? rowStyleIndices[rowIndex]
             : bodyStyleIndex;
-        const styleAttribute = Number.isInteger(styleIndex) ? ` s="${styleIndex}"` : "";
         const cellXml = cells.map((cellValue, cellIndex) => {
             const column = toColumnLetter(cellIndex);
             const cellRef = `${column}${rowNumber}`;
             const text = escapeXmlText(cellValue);
-            return `<c r="${cellRef}" t="inlineStr"${styleAttribute}><is><t xml:space="preserve">${text}</t></is></c>`;
+            const cellStyleIndex =
+                (cellStyleMatrix && Number.isInteger(cellStyleMatrix[rowIndex]?.[cellIndex])
+                    ? cellStyleMatrix[rowIndex][cellIndex]
+                    : baseStyleIndex);
+            const resolvedStyleAttribute = Number.isInteger(cellStyleIndex) ? ` s="${cellStyleIndex}"` : "";
+            return `<c r="${cellRef}" t="inlineStr"${resolvedStyleAttribute}><is><t xml:space="preserve">${text}</t></is></c>`;
         });
         rowXml.push(`<row r="${rowNumber}">${cellXml.join("")}</row>`);
     });
@@ -259,20 +264,22 @@ function buildWorksheetXml(sheetInput) {
 }
 
 function buildStylesXml() {
-    // fill palette order: [placeholder, header (soft pastel), stripe A (deep pastel yellow), body/white, stripe B (light pastel yellow)]
-    // zebra striping alternates between stripe A/B via cellXf indices 2 & 3; header uses index 1
+    // fill palette order: [placeholder, header (soft pastel), stripe A (deep pastel yellow), body/white, stripe B (light pastel yellow), project stripe A, project stripe B]
+    // zebra striping alternates between stripe A/B via cellXf indices 2 & 3; header uses index 1; project column stripes use indices 4 & 5
     return `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n` +
         `<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">` +
         `<fonts count=\"2\">` +
         `<font><sz val=\"11\"/><color rgb=\"FF000000\"/><name val=\"Calibri\"/><family val=\"2\"/></font>` +
         `<font><sz val=\"11\"/><color rgb=\"FF000000\"/><name val=\"Calibri\"/><family val=\"2\"/><b/></font>` +
         `</fonts>` +
-        `<fills count=\"5\">` +
+        `<fills count=\"7\">` +
         `<fill><patternFill patternType=\"none\"/></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF3CC\"/></patternFill></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFEB9C\"/></patternFill></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFFFF\"/></patternFill></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF7D6\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFF7E9BE\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFEF6DD\"/></patternFill></fill>` +
         `</fills>` +
         `<borders count=\"2\">` +
         `<border><left/><right/><top/><bottom/><diagonal/></border>` +
@@ -285,11 +292,13 @@ function buildStylesXml() {
         `</border>` +
         `</borders>` +
         `<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>` +
-        `<cellXfs count=\"4\">` +
+        `<cellXfs count=\"6\">` +
         `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"3\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
         `<xf numFmtId=\"0\" fontId=\"1\" fillId=\"1\" borderId=\"1\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
         `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"2\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
         `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"4\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"5\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"6\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
         `</cellXfs>` +
         `<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>` +
         `</styleSheet>`;
@@ -561,6 +570,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     const projectName = pickFirstString(project?.name, project?.id);
     const rows = [header];
     const rowStyleIndices = [undefined];
+    const cellStyleMatrix = [new Array(header.length).fill(undefined)];
     const merges = [];
     const columnWidths = [18, 48, 12, 12, 18, 18, 60, 52, 52];
 
@@ -581,7 +591,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                 : [];
             const childIssues = Array.isArray(raw.issues) ? raw.issues : [];
 
-            const severity = pickFirstString(raw.severity, raw.level, severityLevels);
+            const severity = pickFirstString(raw.severity, raw.level) || pickFirstString(severityLevels);
             const fallbackIssueText = pickFirstString(
                 raw.message,
                 raw.title,
@@ -603,10 +613,11 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                 }
                 currentGroupKey = groupKey;
             }
+            const projectColumnStyleIndex = currentStripeIndex === 2 ? 4 : 5;
 
             for (let index = 0; index < rowCount; index += 1) {
                 const subIssue = childIssues[index];
-                const subSeverity = severityLevels[index] ?? severity;
+                const subSeverityLevel = severityLevels[index] ?? severityLevels[0] ?? "";
                 const subRuleId = ruleIds[index] ?? "";
                 const subLine = normaliseLineLabel(
                     subIssue?.line ??
@@ -637,10 +648,10 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                 rows.push([
                     projectName,
                     filePath,
-                    subSeverity,
+                    severity,
                     subLine,
                     subRuleId,
-                    subSeverity,
+                    subSeverityLevel,
                     subIssueText,
                     recommendation,
                     fixedCode
@@ -648,6 +659,9 @@ function buildIssuesTreeRowsFromProject(project, reports) {
 
                 // styles: 2 = stripe A (#FFFFEB9C), 3 = stripe B (#FFFFF7D6)
                 rowStyleIndices.push(currentStripeIndex);
+                const projectColumnRow = new Array(header.length).fill(undefined);
+                projectColumnRow[0] = projectColumnStyleIndex;
+                cellStyleMatrix.push(projectColumnRow);
             }
 
         });
@@ -722,7 +736,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     addPairedMerges(2, 3); // merge severity only when line matches
     addPairedMerges(3, 2); // merge line only when severity matches
 
-    return { rows, merges, columnWidths, rowStyleIndices };
+    return { rows, merges, columnWidths, rowStyleIndices, cellStyleMatrix };
 }
 
 function buildKeyValueRows(items, headerLabel = "欄位", valueLabel = "內容") {
@@ -1014,7 +1028,8 @@ export async function exportAiReviewReportToExcel({ details, issues = [], metada
 }
 
 export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [] }) {
-    const { rows, merges, columnWidths, rowStyleIndices } = buildIssuesTreeRowsFromProject(project, reports);
+    const { rows, merges, columnWidths, rowStyleIndices, cellStyleMatrix } =
+        buildIssuesTreeRowsFromProject(project, reports);
     if (rows.length <= 1) {
         throw new Error("缺少可匯出的問題資料");
     }
@@ -1028,6 +1043,7 @@ export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [
             bodyStyleIndex: 0,
             headerStyleIndex: 1,
             rowStyleIndices,
+            cellStyleMatrix,
             freezeHeader: true
         }
     ];
