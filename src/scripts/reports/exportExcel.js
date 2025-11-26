@@ -1,4 +1,121 @@
-import JSZip from "jszip";
+const CRC32_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+        let value = index;
+        for (let bit = 0; bit < 8; bit += 1) {
+            value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+        }
+        table[index] = value >>> 0;
+    }
+    return table;
+})();
+
+function crc32(bytes) {
+    let crc = -1;
+    for (let index = 0; index < bytes.length; index += 1) {
+        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ bytes[index]) & 0xff];
+    }
+    return (crc ^ -1) >>> 0;
+}
+
+function toDosDateTime(date = new Date()) {
+    const year = Math.max(1980, date.getFullYear());
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = Math.floor(date.getSeconds() / 2);
+    const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+    const dosTime = (hours << 11) | (minutes << 5) | seconds;
+    return { dosDate, dosTime };
+}
+
+function concatUint8Arrays(arrays) {
+    const totalLength = arrays.reduce((sum, entry) => sum + entry.length, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    arrays.forEach((entry) => {
+        combined.set(entry, offset);
+        offset += entry.length;
+    });
+    return combined;
+}
+
+function createZipBlob(entries) {
+    const encoder = new TextEncoder();
+    const fileChunks = [];
+    const centralChunks = [];
+    let offset = 0;
+
+    entries.forEach((entry) => {
+        const nameBytes = encoder.encode((entry?.path || "").replace(/^\/+/, ""));
+        const dataBytes =
+            entry?.content instanceof Uint8Array
+                ? entry.content
+                : encoder.encode(String(entry?.content ?? ""));
+        const { dosDate, dosTime } = toDosDateTime(entry?.date ? new Date(entry.date) : new Date());
+        const checksum = crc32(dataBytes);
+
+        const localHeader = new Uint8Array(30);
+        const localView = new DataView(localHeader.buffer);
+        localView.setUint32(0, 0x04034b50, true);
+        localView.setUint16(4, 20, true);
+        localView.setUint16(6, 0, true);
+        localView.setUint16(8, 0, true);
+        localView.setUint16(10, dosTime, true);
+        localView.setUint16(12, dosDate, true);
+        localView.setUint32(14, checksum, true);
+        localView.setUint32(18, dataBytes.length, true);
+        localView.setUint32(22, dataBytes.length, true);
+        localView.setUint16(26, nameBytes.length, true);
+        localView.setUint16(28, 0, true);
+
+        const fileOffset = offset;
+        fileChunks.push(localHeader, nameBytes, dataBytes);
+        offset += localHeader.length + nameBytes.length + dataBytes.length;
+
+        const centralHeader = new Uint8Array(46);
+        const centralView = new DataView(centralHeader.buffer);
+        centralView.setUint32(0, 0x02014b50, true);
+        centralView.setUint16(4, 20, true);
+        centralView.setUint16(6, 20, true);
+        centralView.setUint16(8, 0, true);
+        centralView.setUint16(10, 0, true);
+        centralView.setUint16(12, dosTime, true);
+        centralView.setUint16(14, dosDate, true);
+        centralView.setUint32(16, checksum, true);
+        centralView.setUint32(20, dataBytes.length, true);
+        centralView.setUint32(24, dataBytes.length, true);
+        centralView.setUint16(28, nameBytes.length, true);
+        centralView.setUint16(30, 0, true);
+        centralView.setUint16(32, 0, true);
+        centralView.setUint16(34, 0, true);
+        centralView.setUint16(36, 0, true);
+        centralView.setUint32(38, 0, true);
+        centralView.setUint32(42, fileOffset, true);
+
+        centralChunks.push(centralHeader, nameBytes);
+    });
+
+    const centralDirectoryStart = offset;
+    const centralDirectorySize = centralChunks.reduce((sum, entry) => sum + entry.length, 0);
+    offset += centralDirectorySize;
+
+    const endRecord = new Uint8Array(22);
+    const endView = new DataView(endRecord.buffer);
+    const fileCount = entries.length;
+    endView.setUint32(0, 0x06054b50, true);
+    endView.setUint16(4, 0, true);
+    endView.setUint16(6, 0, true);
+    endView.setUint16(8, fileCount, true);
+    endView.setUint16(10, fileCount, true);
+    endView.setUint32(12, centralDirectorySize, true);
+    endView.setUint32(16, centralDirectoryStart, true);
+    endView.setUint16(20, 0, true);
+
+    const zipBytes = concatUint8Arrays([...fileChunks, ...centralChunks, endRecord]);
+    return new Blob([zipBytes], { type: "application/zip" });
+}
 
 function ensureArray(value) {
     if (Array.isArray(value)) {
@@ -67,7 +184,22 @@ function normaliseRows(rows) {
     });
 }
 
-function buildWorksheetXml(rows) {
+function buildWorksheetXml(sheetInput) {
+    const rows = Array.isArray(sheetInput) ? sheetInput : sheetInput?.rows;
+    const merges = Array.isArray(sheetInput?.merges)
+        ? sheetInput.merges.filter((entry) => typeof entry === "string" && entry.trim())
+        : [];
+    const headerRows = Number.isInteger(sheetInput?.headerRows) ? Math.max(0, sheetInput.headerRows) : 0;
+    const bodyStyleIndex = sheetInput?.bodyStyleIndex ?? 0;
+    const headerStyleIndex = sheetInput?.headerStyleIndex ?? 1;
+    const rowStyleIndices = Array.isArray(sheetInput?.rowStyleIndices)
+        ? sheetInput.rowStyleIndices
+        : [];
+    const columnWidths = Array.isArray(sheetInput?.columnWidths)
+        ? sheetInput.columnWidths.map((width) => (Number.isFinite(width) && width > 0 ? width : null))
+        : [];
+    const freezeHeader = sheetInput?.freezeHeader === true;
+
     const normalised = normaliseRows(rows);
     const rowXml = [];
     let maxColumnCount = 0;
@@ -75,11 +207,18 @@ function buildWorksheetXml(rows) {
     normalised.forEach((cells, rowIndex) => {
         const rowNumber = rowIndex + 1;
         maxColumnCount = Math.max(maxColumnCount, cells.length);
+        const isHeaderRow = rowIndex < headerRows;
+        const styleIndex = isHeaderRow
+            ? headerStyleIndex
+            : Number.isInteger(rowStyleIndices[rowIndex])
+            ? rowStyleIndices[rowIndex]
+            : bodyStyleIndex;
+        const styleAttribute = Number.isInteger(styleIndex) ? ` s="${styleIndex}"` : "";
         const cellXml = cells.map((cellValue, cellIndex) => {
             const column = toColumnLetter(cellIndex);
             const cellRef = `${column}${rowNumber}`;
             const text = escapeXmlText(cellValue);
-            return `<c r="${cellRef}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+            return `<c r="${cellRef}" t="inlineStr"${styleAttribute}><is><t xml:space="preserve">${text}</t></is></c>`;
         });
         rowXml.push(`<row r="${rowNumber}">${cellXml.join("")}</row>`);
     });
@@ -87,14 +226,34 @@ function buildWorksheetXml(rows) {
     const lastColumn = maxColumnCount > 0 ? toColumnLetter(maxColumnCount - 1) : "A";
     const lastRow = normalised.length > 0 ? normalised.length : 1;
     const dimension = `A1:${lastColumn}${lastRow}`;
+    const mergeXml = merges.length
+        ? `<mergeCells count="${merges.length}">${merges
+              .map((range) => `<mergeCell ref="${escapeXmlAttribute(range)}"/>`)
+              .join("")}</mergeCells>`
+        : "";
+    const colsXml = columnWidths.length
+        ? `<cols>${columnWidths
+              .map((width, index) =>
+                  width
+                      ? `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`
+                      : ""
+              )
+              .filter(Boolean)
+              .join("")}</cols>`
+        : "";
+    const sheetViewXml = freezeHeader
+        ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+        : `<sheetViews><sheetView workbookViewId="0"/></sheetViews>`;
 
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
         `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ` +
         `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
         `<dimension ref="${dimension}"/>` +
-        `<sheetViews><sheetView workbookViewId="0"/></sheetViews>` +
+        sheetViewXml +
         `<sheetFormatPr defaultRowHeight="15"/>` +
+        colsXml +
         `<sheetData>${rowXml.join("")}</sheetData>` +
+        mergeXml +
         `<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>` +
         `</worksheet>`;
 }
@@ -102,11 +261,33 @@ function buildWorksheetXml(rows) {
 function buildStylesXml() {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
         `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-        `<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font></fonts>` +
-        `<fills count="1"><fill><patternFill patternType="none"/></fill></fills>` +
-        `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
+        `<fonts count="2">` +
+        `<font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/></font>` +
+        `<font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/><b/></font>` +
+        `</fonts>` +
+        `<fills count="4">` +
+        `<fill><patternFill patternType="none"/></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFF7F9FC"/></patternFill></fill>` +
+        `</fills>` +
+        `<borders count="2">` +
+        `<border><left/><right/><top/><bottom/><diagonal/></border>` +
+        `<border>` +
+        `<left style="thin"><color rgb="FFE2E8F0"/></left>` +
+        `<right style="thin"><color rgb="FFE2E8F0"/></right>` +
+        `<top style="thin"><color rgb="FFE2E8F0"/></top>` +
+        `<bottom style="thin"><color rgb="FFE2E8F0"/></bottom>` +
+        `<diagonal/>` +
+        `</border>` +
+        `</borders>` +
         `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-        `<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>` +
+        `<cellXfs count="4">` +
+        `<xf numFmtId="0" fontId="0" fillId="2" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="1" fillId="1" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="0" fillId="1" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `</cellXfs>` +
         `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
         `</styleSheet>`;
 }
@@ -142,14 +323,16 @@ function buildWorkbookXml(sheets) {
 }
 
 function buildWorkbookRelsXml(sheets) {
-    const relationships = sheets
+    const sheetRelationships = sheets
         .map((sheet, index) =>
             `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
         )
         .join("");
 
+    const styleRelationship = `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
+
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
-        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships}</Relationships>`;
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheetRelationships}${styleRelationship}</Relationships>`;
 }
 
 function buildContentTypesXml(sheetCount) {
@@ -175,27 +358,27 @@ async function createWorkbookBlob(sheets) {
         throw new Error("No sheets provided for export.");
     }
 
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", buildContentTypesXml(sheets.length));
-    zip.folder("_rels").file(".rels", buildRootRelsXml());
-
-    const xlFolder = zip.folder("xl");
-    xlFolder.file("styles.xml", buildStylesXml());
-
     const preparedSheets = sheets.map((sheet, index) => {
         const name = sanitiseSheetName(sheet.name, `Sheet${index + 1}`);
         return { ...sheet, name };
     });
 
-    xlFolder.file("workbook.xml", buildWorkbookXml(preparedSheets));
-    xlFolder.folder("_rels").file("workbook.xml.rels", buildWorkbookRelsXml(preparedSheets));
+    const entries = [
+        { path: "[Content_Types].xml", content: buildContentTypesXml(sheets.length) },
+        { path: "_rels/.rels", content: buildRootRelsXml() },
+        { path: "xl/styles.xml", content: buildStylesXml() },
+        { path: "xl/workbook.xml", content: buildWorkbookXml(preparedSheets) },
+        { path: "xl/_rels/workbook.xml.rels", content: buildWorkbookRelsXml(preparedSheets) }
+    ];
 
-    const worksheetsFolder = xlFolder.folder("worksheets");
     preparedSheets.forEach((sheet, index) => {
-        worksheetsFolder.file(`sheet${index + 1}.xml`, buildWorksheetXml(sheet.rows));
+        entries.push({
+            path: `xl/worksheets/sheet${index + 1}.xml`,
+            content: buildWorksheetXml(sheet)
+        });
     });
 
-    return zip.generateAsync({ type: "blob" });
+    return createZipBlob(entries);
 }
 
 function triggerDownload(blob, filename) {
@@ -244,6 +427,66 @@ function toMultiline(value) {
         return value;
     }
     return String(value);
+}
+
+function safeStringifyList(value) {
+    try {
+        return JSON.stringify(Array.isArray(value) ? value : []);
+    } catch (error) {
+        console.warn("[excel] Failed to stringify list", error, value);
+        return "[]";
+    }
+}
+
+function normaliseLineLabel(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+    }
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return "";
+        const match = trimmed.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+        if (match) {
+            const start = Number(match[1]);
+            const end = match[2] ? Number(match[2]) : start;
+            if (Number.isFinite(start) && Number.isFinite(end)) {
+                const safeStart = Math.min(start, end);
+                const safeEnd = Math.max(start, end);
+                return safeStart === safeEnd ? String(safeStart) : `${safeStart}-${safeEnd}`;
+            }
+        }
+        return trimmed;
+    }
+    if (Array.isArray(value)) {
+        const [first, second] = value;
+        const start = Number(first);
+        const end = second === undefined ? start : Number(second);
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+            const safeStart = Math.min(start, end);
+            const safeEnd = Math.max(start, end);
+            return safeStart === safeEnd ? String(safeStart) : `${safeStart}-${safeEnd}`;
+        }
+    }
+    if (typeof value === "object") {
+        const start = Number(
+            value.start ?? value.begin ?? value.from ?? value.line ?? value.lineStart ?? value.startLine
+        );
+        const end = Number(
+            value.end ?? value.finish ?? value.to ?? value.lineEnd ?? value.line_finish ?? value.lineEndNumber
+        );
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+            const safeStart = Math.min(start, end);
+            const safeEnd = Math.max(start, end);
+            return safeStart === safeEnd ? String(safeStart) : `${safeStart}-${safeEnd}`;
+        }
+        if (Number.isFinite(start)) {
+            return String(start);
+        }
+    }
+    return "";
 }
 
 function pickFirstString(...candidates) {
@@ -297,6 +540,136 @@ function buildIssueRows(issues) {
         });
     }
     return rows.length > 1 ? rows : [];
+}
+
+function buildIssuesTreeRowsFromProject(project, reports) {
+    const header = [
+        "project_name",
+        "file_path",
+        "severity",
+        "rule_ids",
+        "severity_levels",
+        "issues",
+        "recommendation",
+        "fixed_code"
+    ];
+
+    const projectName = pickFirstString(project?.name, project?.id);
+    const rows = [header];
+    const rowStyleIndices = [undefined];
+    const merges = [];
+    const columnWidths = [18, 48, 12, 18, 18, 60, 52, 52];
+
+    (Array.isArray(reports) ? reports : []).forEach((report) => {
+        const filePath = pickFirstString(report?.path, report?.file, report?.filename);
+        const issues = Array.isArray(report?.issues) ? report.issues : [];
+
+        issues.forEach((issue) => {
+            const raw = issue?.raw || issue || {};
+            const severityLevels = Array.isArray(raw.severity_levels)
+                ? raw.severity_levels.map((item) => (typeof item === "string" ? item : String(item))).filter(Boolean)
+                : [];
+            const ruleIds = Array.isArray(raw.rule_ids)
+                ? raw.rule_ids.map((item) => (typeof item === "string" ? item : String(item))).filter(Boolean)
+                : [];
+            const childIssues = Array.isArray(raw.issues) ? raw.issues : [];
+
+            const severity = pickFirstString(raw.severity, raw.level, severityLevels);
+            const fallbackIssueText = pickFirstString(
+                raw.message,
+                raw.title,
+                raw.description,
+                raw.issue,
+                raw.text,
+                raw.label
+            );
+            const recommendation = toMultiline(
+                raw.recommendation ?? raw.fix_suggestion ?? raw.suggestion ?? raw.suggest
+            );
+            const fixedCode = toMultiline(raw.fixed_code ?? raw.fix_code ?? raw.fix);
+
+            const rowCount = Math.max(severityLevels.length, ruleIds.length, childIssues.length, 1);
+            let currentSeverityKey = typeof severity === "string" ? severity.trim() : "";
+            let stripeToggle = false;
+
+            for (let index = 0; index < rowCount; index += 1) {
+                const subIssue = childIssues[index];
+                const subSeverity = severityLevels[index] ?? "";
+                const subRuleId = ruleIds[index] ?? "";
+                let subIssueText = fallbackIssueText ?? "";
+                if (typeof subIssue === "string" || typeof subIssue === "number") {
+                    subIssueText = String(subIssue);
+                } else if (subIssue && typeof subIssue === "object") {
+                    try {
+                        subIssueText = pickFirstString(
+                            subIssue.message,
+                            subIssue.text,
+                            subIssue.label,
+                            JSON.stringify(subIssue)
+                        );
+                    } catch (_error) {
+                        subIssueText = pickFirstString(subIssue.message, subIssue.text, subIssue.label, "");
+                    }
+                }
+
+                rows.push([
+                    projectName,
+                    filePath,
+                    severity,
+                    subRuleId,
+                    subSeverity,
+                    subIssueText,
+                    recommendation,
+                    fixedCode
+                ]);
+
+                const severityKey = typeof severity === "string" ? severity.trim() : "";
+                if (severityKey !== currentSeverityKey) {
+                    currentSeverityKey = severityKey;
+                    stripeToggle = false;
+                }
+
+                const stripeStyleIndex = stripeToggle ? 3 : 2;
+                rowStyleIndices.push(stripeStyleIndex);
+                stripeToggle = !stripeToggle;
+            }
+
+        });
+    });
+
+    const mergeColumns = [0, 1, 2];
+    mergeColumns.forEach((columnIndex) => {
+        let startIndex = 1; // skip header row
+        let previousValue = rows[startIndex]?.[columnIndex];
+
+        for (let rowIndex = startIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+            const cellValue = rows[rowIndex]?.[columnIndex];
+            const isSame = cellValue === previousValue;
+            const hasValue = previousValue !== undefined && previousValue !== "";
+
+            if (!isSame && hasValue && rowIndex - startIndex > 1) {
+                const columnLetter = toColumnLetter(columnIndex);
+                const startRow = startIndex + 1;
+                const endRow = rowIndex;
+                merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
+            }
+
+            if (!isSame) {
+                startIndex = rowIndex;
+                previousValue = cellValue;
+            }
+        }
+
+        const hasValue = previousValue !== undefined && previousValue !== "";
+        if (hasValue && rows.length - startIndex > 1) {
+            const columnLetter = toColumnLetter(columnIndex);
+            const startRow = startIndex + 1;
+            const endRow = rows.length;
+            merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
+        }
+    });
+
+    return { rows, merges, columnWidths, rowStyleIndices };
 }
 
 function buildKeyValueRows(items, headerLabel = "欄位", valueLabel = "內容") {
@@ -587,8 +960,31 @@ export async function exportAiReviewReportToExcel({ details, issues = [], metada
     await exportSheetsAsWorkbook({ sheets, metadata: { ...metadata, type: "ai-review" }, fallbackType: "ai" });
 }
 
+export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [] }) {
+    const { rows, merges, columnWidths, rowStyleIndices } = buildIssuesTreeRowsFromProject(project, reports);
+    if (rows.length <= 1) {
+        throw new Error("缺少可匯出的問題資料");
+    }
+    const sheets = [
+        {
+            name: "IssuesTree",
+            rows,
+            merges,
+            columnWidths,
+            headerRows: 1,
+            bodyStyleIndex: 0,
+            headerStyleIndex: 1,
+            rowStyleIndices,
+            freezeHeader: true
+        }
+    ];
+    const metadata = { projectName: project.name ?? project.id ?? "", type: "IssuesTree" };
+    await exportSheetsAsWorkbook({ sheets, metadata, fallbackType: "IssuesTree" });
+}
+
 export default {
     exportCombinedReportToExcel,
     exportStaticReportToExcel,
-    exportAiReviewReportToExcel
+    exportAiReviewReportToExcel,
+    exportProjectIssuesTreeToExcel
 };
