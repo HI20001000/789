@@ -264,7 +264,7 @@ function buildWorksheetXml(sheetInput) {
 }
 
 function buildStylesXml() {
-    // fill palette order: [placeholder, header (soft pastel), stripe A (deep pastel yellow), body/white, stripe B (light pastel yellow), project stripe A, project stripe B]
+    // fill palette order: [placeholder, header (soft pastel), stripe A (yellow), body/white, stripe B (light yellow), project stripe A, project stripe B]
     // zebra striping alternates between stripe A/B via cellXf indices 2 & 3; header uses index 1; project column stripes use indices 4 & 5
     return `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n` +
         `<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">` +
@@ -275,11 +275,11 @@ function buildStylesXml() {
         `<fills count=\"7\">` +
         `<fill><patternFill patternType=\"none\"/></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF3CC\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFEB9C\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFE680\"/></patternFill></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFFFF\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF7D6\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFF7E9BE\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFEF6DD\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF0B3\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFDB4D\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFDB4D\"/></patternFill></fill>` +
         `</fills>` +
         `<borders count=\"2\">` +
         `<border><left/><right/><top/><bottom/><diagonal/></border>` +
@@ -293,12 +293,12 @@ function buildStylesXml() {
         `</borders>` +
         `<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>` +
         `<cellXfs count=\"6\">` +
-        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"3\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
-        `<xf numFmtId=\"0\" fontId=\"1\" fillId=\"1\" borderId=\"1\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
-        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"2\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
-        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"4\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
-        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"5\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
-        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"6\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"3\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"1\" fillId=\"1\" borderId=\"1\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"2\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"4\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"5\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"6\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\"/></xf>` +
         `</cellXfs>` +
         `<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>` +
         `</styleSheet>`;
@@ -657,7 +657,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                     fixedCode
                 ]);
 
-                // styles: 2 = stripe A (#FFFFEB9C), 3 = stripe B (#FFFFF7D6)
+                // styles: 2 = stripe A (#FFE680), 3 = stripe B (#FFF0B3)
                 rowStyleIndices.push(currentStripeIndex);
                 const projectColumnRow = new Array(header.length).fill(undefined);
                 projectColumnRow[0] = projectColumnStyleIndex;
