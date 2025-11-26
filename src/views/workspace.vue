@@ -2239,14 +2239,33 @@ function resolveSeverityInfo(detail, issue) {
     }
 
     const label = candidates[0] || "未標示";
-    const upper = label.toUpperCase();
-    let severityClass = detail?.severityClass || issue?.severityClass || "info";
-    if (!label || upper === "未標示") {
+    const normalizedCandidates = candidates
+        .map((entry) => (typeof entry === "string" ? entry.toLowerCase() : ""))
+        .filter(Boolean);
+
+    const mapSeverityClass = (value) => {
+        if (!value) return null;
+        if (value.includes("crit") || value.includes("fatal") || value.includes("err") || value === "high") {
+            return "high";
+        }
+        if (value.includes("warn") || value.includes("mid") || value.includes("med")) {
+            return "mid";
+        }
+        if (value.includes("info") || value.includes("low")) {
+            return "low";
+        }
+        return null;
+    };
+
+    const normalizedLabel = typeof label === "string" ? label.toLowerCase() : "";
+    let severityClass = mapSeverityClass(normalizedCandidates.find((value) => mapSeverityClass(value)))
+        || mapSeverityClass(normalizedLabel)
+        || detail?.severityClass
+        || issue?.severityClass
+        || "info";
+
+    if (!label || normalizedLabel === "未標示") {
         severityClass = "muted";
-    } else if (upper.includes("CRIT") || upper.includes("ERR")) {
-        severityClass = "error";
-    } else if (upper.includes("WARN")) {
-        severityClass = "warn";
     }
 
     return { label, severityClass };
@@ -6793,18 +6812,21 @@ body,
     color: #0f172a;
 }
 
+.reportIssueInlineSeverity--high,
 .reportIssueInlineSeverity--error {
     background: rgba(248, 113, 113, 0.22);
     color: #991b1b;
     border-color: rgba(248, 113, 113, 0.45);
 }
 
+.reportIssueInlineSeverity--mid,
 .reportIssueInlineSeverity--warn {
     background: rgba(234, 179, 8, 0.24);
     color: #92400e;
     border-color: rgba(234, 179, 8, 0.45);
 }
 
+.reportIssueInlineSeverity--low,
 .reportIssueInlineSeverity--info {
     background: rgba(59, 130, 246, 0.2);
     color: #1d4ed8;
