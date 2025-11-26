@@ -259,6 +259,8 @@ function buildWorksheetXml(sheetInput) {
 }
 
 function buildStylesXml() {
+    // fill palette order: [placeholder, header (deep blue), stripe A, body/white, stripe B]
+    // zebra striping alternates between stripe A/B via cellXf indices 2 & 3; header uses index 1
     return `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n` +
         `<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">` +
         `<fonts count=\"2\">` +
@@ -642,6 +644,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                     fixedCode
                 ]);
 
+                // styles: 2 = stripe A (#D9E2F3), 3 = stripe B (#F7F9FC)
                 const stripeStyleIndex = stripeToggle ? 3 : 2;
                 rowStyleIndices.push(stripeStyleIndex);
                 stripeToggle = !stripeToggle;
