@@ -314,14 +314,16 @@ function buildWorkbookXml(sheets) {
 }
 
 function buildWorkbookRelsXml(sheets) {
-    const relationships = sheets
+    const sheetRelationships = sheets
         .map((sheet, index) =>
             `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
         )
         .join("");
 
+    const styleRelationship = `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
+
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
-        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships}</Relationships>`;
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheetRelationships}${styleRelationship}</Relationships>`;
 }
 
 function buildContentTypesXml(sheetCount) {
