@@ -512,7 +512,9 @@ async function enrichStaticIssuesWithDify(issues, options = {}) {
         projectName = "",
         path = "",
         userId = "",
-        files = undefined
+        files = undefined,
+        loadAiReviewTemplate,
+        loadAiReviewRules
     } = options;
 
     const resolvedProjectName = projectName || projectId || "sql-report";
@@ -549,7 +551,10 @@ async function enrichStaticIssuesWithDify(issues, options = {}) {
                 userId: resolvedUserId,
                 segments: [segment],
                 files,
-                conversationId
+                conversationId,
+                language: "SQL",
+                loadAiReviewTemplate,
+                loadAiReviewRules
             });
 
             if (typeof difyResponse?.conversationId === "string" && difyResponse.conversationId.trim()) {
@@ -1886,7 +1891,9 @@ export async function analyseSqlToReport(sqlText, options = {}) {
         projectName = "",
         path = "",
         userId = "",
-        files = undefined
+        files = undefined,
+        loadAiReviewTemplate,
+        loadAiReviewRules
     } = options || {};
 
     const resolvedProjectName = projectName || projectId || "sql-report";
@@ -1931,7 +1938,10 @@ export async function analyseSqlToReport(sqlText, options = {}) {
                 content: segmentTexts.join("\n\n"),
                 userId: resolvedUserId,
                 segments: segmentsForDify,
-                files
+                files,
+                language: "SQL",
+                loadAiReviewTemplate,
+                loadAiReviewRules
             });
         } catch (error) {
             dmlError = error;
@@ -1957,7 +1967,9 @@ export async function analyseSqlToReport(sqlText, options = {}) {
                 projectName,
                 path,
                 userId: resolvedUserId,
-                files
+                files,
+                loadAiReviewTemplate,
+                loadAiReviewRules
             });
             if (enrichment) {
                 const enrichedIssues = cloneIssueListForPersistence(enrichment.issues);

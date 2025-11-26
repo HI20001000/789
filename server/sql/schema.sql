@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS setting_ai_review (
     language ENUM('SQL','Java'),
     code_block TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_setting_ai_review_language (language),
     INDEX idx_setting_ai_review_language (language)
 );
 
