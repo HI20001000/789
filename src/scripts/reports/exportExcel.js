@@ -502,7 +502,6 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     const projectName = pickFirstString(project?.name, project?.id);
     const rows = [header];
     const merges = [];
-    let currentRow = 2; // account for header row
 
     (Array.isArray(reports) ? reports : []).forEach((report) => {
         const filePath = pickFirstString(report?.path, report?.file, report?.filename);
@@ -533,7 +532,6 @@ function buildIssuesTreeRowsFromProject(project, reports) {
             const fixedCode = toMultiline(raw.fixed_code ?? raw.fix_code ?? raw.fix);
 
             const rowCount = Math.max(severityLevels.length, ruleIds.length, childIssues.length, 1);
-            const startRow = currentRow;
             for (let index = 0; index < rowCount; index += 1) {
                 const subIssue = childIssues[index];
                 const subSeverity = severityLevels[index] ?? "";
@@ -564,17 +562,41 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                     recommendation,
                     fixedCode
                 ]);
-                currentRow += 1;
             }
 
-            const endRow = startRow + rowCount - 1;
-            if (rowCount > 1) {
-                [0, 1, 2].forEach((columnIndex) => {
-                    const columnLetter = toColumnLetter(columnIndex);
-                    merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
-                });
-            }
         });
+    });
+
+    const mergeColumns = [0, 1, 2];
+    mergeColumns.forEach((columnIndex) => {
+        let startIndex = 1; // skip header row
+        let previousValue = rows[startIndex]?.[columnIndex];
+
+        for (let rowIndex = startIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+            const cellValue = rows[rowIndex]?.[columnIndex];
+            const isSame = cellValue === previousValue;
+            const hasValue = previousValue !== undefined && previousValue !== "";
+
+            if (!isSame && hasValue && rowIndex - startIndex > 1) {
+                const columnLetter = toColumnLetter(columnIndex);
+                const startRow = startIndex + 1;
+                const endRow = rowIndex;
+                merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
+            }
+
+            if (!isSame) {
+                startIndex = rowIndex;
+                previousValue = cellValue;
+            }
+        }
+
+        const hasValue = previousValue !== undefined && previousValue !== "";
+        if (hasValue && rows.length - startIndex > 1) {
+            const columnLetter = toColumnLetter(columnIndex);
+            const startRow = startIndex + 1;
+            const endRow = rows.length;
+            merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
+        }
     });
 
     return { rows, merges };
