@@ -5494,8 +5494,8 @@ body,
 }
 
 .workSpace--settings {
-    background: #131313;
-    border-color: #2f2f2f;
+    background: #f5f7fb;
+    border-color: #d7deea;
 }
 
 .settingsPanel {
@@ -5513,7 +5513,7 @@ body,
 
 .settingsIntro {
     margin: 6px 0 0;
-    color: #9ca3af;
+    color: #52616b;
     font-size: 13px;
 }
 
@@ -5524,15 +5524,15 @@ body,
 }
 
 .settingsLabel {
-    color: #cbd5e1;
+    color: #1f2937;
     font-size: 13px;
     font-weight: 600;
 }
 
 .settingsLanguagePicker select {
-    background: #1f2937;
-    color: #e5e7eb;
-    border: 1px solid #374151;
+    background: #f8fafc;
+    color: #1f2937;
+    border: 1px solid #cbd5e1;
     border-radius: 8px;
     padding: 8px 10px;
     min-width: 120px;
@@ -5545,24 +5545,25 @@ body,
 .settingsTabs {
     display: flex;
     gap: 8px;
-    border-bottom: 1px solid #2f2f2f;
+    border-bottom: 1px solid #d7deea;
     padding-bottom: 4px;
 }
 
 .settingsTab {
     padding: 8px 14px;
     border-radius: 10px;
-    border: 1px solid #2f2f2f;
-    background: #1f2937;
-    color: #e5e7eb;
+    border: 1px solid #cbd5e1;
+    background: linear-gradient(135deg, #eef2fb, #f9fbff);
+    color: #1f2937;
     cursor: pointer;
-    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.08);
 }
 
 .settingsTab.active {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(14, 165, 233, 0.15));
-    border-color: rgba(14, 165, 233, 0.4);
-    color: #e0f2fe;
+    background: linear-gradient(135deg, #dce8ff, #e9f3ff);
+    border-color: #93c5fd;
+    color: #0f172a;
 }
 
 .settingsContent {
@@ -5572,13 +5573,14 @@ body,
 }
 
 .settingsCard {
-    background: #111827;
-    border: 1px solid #2f2f2f;
+    background: #ffffff;
+    border: 1px solid #d7deea;
     border-radius: 12px;
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.06);
 }
 
 .settingsActions {
@@ -5590,12 +5592,12 @@ body,
 
 .settingsStatus {
     margin-right: auto;
-    color: #9ca3af;
+    color: #52616b;
     font-size: 13px;
 }
 
 .settingsStatus.success {
-    color: #4ade80;
+    color: #15803d;
 }
 
 .ruleGrid {
@@ -5610,7 +5612,7 @@ body,
     gap: 10px;
     align-items: center;
     padding-bottom: 6px;
-    border-bottom: 1px solid #1f2937;
+    border-bottom: 1px solid #e2e8f0;
 }
 
 .ruleRow:last-of-type {
@@ -5619,8 +5621,8 @@ body,
 
 .ruleRow--header {
     font-weight: 600;
-    color: #cbd5e1;
-    border-bottom-color: #334155;
+    color: #1f2937;
+    border-bottom-color: #cbd5e1;
 }
 
 .ruleCell {
@@ -5645,9 +5647,9 @@ body,
     width: 100%;
     padding: 10px 12px;
     border-radius: 10px;
-    border: 1px solid #334155;
-    background: #0f172a;
-    color: #e5e7eb;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #0f172a;
     box-sizing: border-box;
 }
 
@@ -5655,8 +5657,8 @@ body,
     margin: 6px 0 12px;
     padding: 12px;
     border-radius: 12px;
-    border: 1px solid #334155;
-    background: #0b1220;
+    border: 1px solid #d7deea;
+    background: #f9fbff;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -5672,13 +5674,13 @@ body,
 
 .aiReviewPlaceholderTitle {
     margin: 0;
-    color: #e5e7eb;
+    color: #0f172a;
     font-weight: 700;
 }
 
 .aiReviewPlaceholderStatusText {
     margin: 0;
-    color: #9ca3af;
+    color: #52616b;
     font-size: 12px;
 }
 
@@ -5691,7 +5693,7 @@ body,
 .aiReviewPlaceholderGroupLabel {
     margin: 0;
     font-weight: 600;
-    color: #cbd5e1;
+    color: #1f2937;
     font-size: 13px;
 }
 
@@ -5712,38 +5714,39 @@ body,
 }
 
 .aiReviewPlaceholderButton {
-    border: 1px dashed #4b5563;
-    background: #111827;
-    color: #e5e7eb;
+    border: 1px dashed #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
     border-radius: 8px;
     padding: 6px 10px;
     cursor: pointer;
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 13px;
-    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.08);
 }
 
 .aiReviewPlaceholderButton:hover:not(:disabled) {
-    background: #1f2937;
-    border-color: #60a5fa;
-    color: #bfdbfe;
+    background: #eef2fb;
+    border-color: #93c5fd;
+    color: #0f172a;
 }
 
 .aiReviewPlaceholderButton.used,
 .aiReviewPlaceholderButton:disabled {
-    border-color: #374151;
+    border-color: #e2e8f0;
     color: #94a3b8;
-    background: #0f172a;
+    background: #f8fafc;
     cursor: not-allowed;
 }
 
 .aiReviewPlaceholderDescription {
-    color: #9ca3af;
+    color: #52616b;
     font-size: 12px;
 }
 
 .aiReviewPlaceholderHint {
-    color: #f59e0b;
+    color: #b45309;
     font-size: 12px;
 }
 
@@ -5756,7 +5759,7 @@ body,
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: #e5e7eb;
+    color: #1f2937;
 }
 
 .mainContent--settings {
