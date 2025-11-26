@@ -259,7 +259,7 @@ function buildWorksheetXml(sheetInput) {
 }
 
 function buildStylesXml() {
-    // fill palette order: [placeholder, header (deep blue), stripe A, body/white, stripe B]
+    // fill palette order: [placeholder, header (soft green), stripe A (soft yellow), body/white, stripe B (soft yellow alt)]
     // zebra striping alternates between stripe A/B via cellXf indices 2 & 3; header uses index 1
     return `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n` +
         `<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">` +
@@ -269,10 +269,10 @@ function buildStylesXml() {
         `</fonts>` +
         `<fills count=\"5\">` +
         `<fill><patternFill patternType=\"none\"/></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF1F4E78\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFD9E2F3\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDCEFD8\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF4CC\"/></patternFill></fill>` +
         `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFFFF\"/></patternFill></fill>` +
-        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFF7F9FC\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFAE6\"/></patternFill></fill>` +
         `</fills>` +
         `<borders count=\"2\">` +
         `<border><left/><right/><top/><bottom/><diagonal/></border>` +
@@ -646,7 +646,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                     fixedCode
                 ]);
 
-                // styles: 2 = stripe A (#D9E2F3), 3 = stripe B (#F7F9FC)
+                // styles: 2 = stripe A (#FFF4CC), 3 = stripe B (#FFFAE6)
                 rowStyleIndices.push(currentStripeIndex);
             }
 
