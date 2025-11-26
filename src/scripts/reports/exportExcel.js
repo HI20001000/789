@@ -479,12 +479,11 @@ function buildIssueRows(issues) {
 function buildIssuesTreeRowsFromProject(project, reports) {
     const header = [
         "project_name",
-        "path",
+        "file_path",
         "severity",
-        "message",
-        "sub_severity_level",
-        "sub_rule_id",
-        "sub_issue_text",
+        "rule_ids",
+        "severity_levels",
+        "issues",
         "recommendation",
         "fixed_code"
     ];
@@ -493,7 +492,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     const rows = [header];
 
     (Array.isArray(reports) ? reports : []).forEach((report) => {
-        const path = pickFirstString(report?.path, report?.file, report?.filename);
+        const filePath = pickFirstString(report?.path, report?.file, report?.filename);
         const issues = Array.isArray(report?.issues) ? report.issues : [];
 
         issues.forEach((issue) => {
@@ -507,7 +506,14 @@ function buildIssuesTreeRowsFromProject(project, reports) {
             const childIssues = Array.isArray(raw.issues) ? raw.issues : [];
 
             const severity = pickFirstString(raw.severity, raw.level, severityLevels);
-            const message = pickFirstString(raw.message, raw.title, childIssues);
+            const fallbackIssueText = pickFirstString(
+                raw.message,
+                raw.title,
+                raw.description,
+                raw.issue,
+                raw.text,
+                raw.label
+            );
             const recommendation = toMultiline(
                 raw.recommendation ?? raw.fix_suggestion ?? raw.suggestion ?? raw.suggest
             );
@@ -518,7 +524,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                 const subIssue = childIssues[index];
                 const subSeverity = severityLevels[index] ?? "";
                 const subRuleId = ruleIds[index] ?? "";
-                let subIssueText = "";
+                let subIssueText = fallbackIssueText ?? "";
                 if (typeof subIssue === "string" || typeof subIssue === "number") {
                     subIssueText = String(subIssue);
                 } else if (subIssue && typeof subIssue === "object") {
@@ -536,11 +542,10 @@ function buildIssuesTreeRowsFromProject(project, reports) {
 
                 rows.push([
                     projectName,
-                    path,
+                    filePath,
                     severity,
-                    message,
-                    subSeverity,
                     subRuleId,
+                    subSeverity,
                     subIssueText,
                     recommendation,
                     fixedCode
