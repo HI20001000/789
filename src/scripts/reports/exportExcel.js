@@ -192,6 +192,9 @@ function buildWorksheetXml(sheetInput) {
     const headerRows = Number.isInteger(sheetInput?.headerRows) ? Math.max(0, sheetInput.headerRows) : 0;
     const bodyStyleIndex = sheetInput?.bodyStyleIndex ?? 0;
     const headerStyleIndex = sheetInput?.headerStyleIndex ?? 1;
+    const rowStyleIndices = Array.isArray(sheetInput?.rowStyleIndices)
+        ? sheetInput.rowStyleIndices
+        : [];
     const columnWidths = Array.isArray(sheetInput?.columnWidths)
         ? sheetInput.columnWidths.map((width) => (Number.isFinite(width) && width > 0 ? width : null))
         : [];
@@ -205,7 +208,11 @@ function buildWorksheetXml(sheetInput) {
         const rowNumber = rowIndex + 1;
         maxColumnCount = Math.max(maxColumnCount, cells.length);
         const isHeaderRow = rowIndex < headerRows;
-        const styleIndex = isHeaderRow ? headerStyleIndex : bodyStyleIndex;
+        const styleIndex = isHeaderRow
+            ? headerStyleIndex
+            : Number.isInteger(rowStyleIndices[rowIndex])
+            ? rowStyleIndices[rowIndex]
+            : bodyStyleIndex;
         const styleAttribute = Number.isInteger(styleIndex) ? ` s="${styleIndex}"` : "";
         const cellXml = cells.map((cellValue, cellIndex) => {
             const column = toColumnLetter(cellIndex);
@@ -255,13 +262,16 @@ function buildStylesXml() {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
         `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
         `<fonts count="2">` +
-        `<font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>` +
-        `<font><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/><b/></font>` +
+        `<font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/></font>` +
+        `<font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/><b/></font>` +
         `</fonts>` +
-        `<fills count="3">` +
+        `<fills count="6">` +
         `<fill><patternFill patternType="none"/></fill>` +
-        `<fill><patternFill patternType="solid"><fgColor rgb="FF2F5597"/></patternFill></fill>` +
-        `<fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFF8CBAD"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFFFE699"/></patternFill></fill>` +
+        `<fill><patternFill patternType="solid"><fgColor rgb="FFE2EFDA"/></patternFill></fill>` +
         `</fills>` +
         `<borders count="2">` +
         `<border><left/><right/><top/><bottom/><diagonal/></border>` +
@@ -274,10 +284,12 @@ function buildStylesXml() {
         `</border>` +
         `</borders>` +
         `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-        `<cellXfs count="3">` +
-        `<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<cellXfs count="5">` +
+        `<xf numFmtId="0" fontId="0" fillId="2" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
         `<xf numFmtId="0" fontId="1" fillId="1" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
-        `<xf numFmtId="0" fontId="0" fillId="2" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
         `</cellXfs>` +
         `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
         `</styleSheet>`;
@@ -547,6 +559,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
 
     const projectName = pickFirstString(project?.name, project?.id);
     const rows = [header];
+    const rowStyleIndices = [undefined];
     const merges = [];
     const columnWidths = [18, 48, 12, 18, 18, 60, 52, 52];
 
@@ -609,6 +622,17 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                     recommendation,
                     fixedCode
                 ]);
+
+                const severityLabel = String(severity || "").trim().toUpperCase();
+                if (severityLabel === "ERROR") {
+                    rowStyleIndices.push(2);
+                } else if (severityLabel === "WARN" || severityLabel === "WARNING") {
+                    rowStyleIndices.push(3);
+                } else if (severityLabel === "INFO") {
+                    rowStyleIndices.push(4);
+                } else {
+                    rowStyleIndices.push(undefined);
+                }
             }
 
         });
@@ -646,7 +670,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
         }
     });
 
-    return { rows, merges, columnWidths };
+    return { rows, merges, columnWidths, rowStyleIndices };
 }
 
 function buildKeyValueRows(items, headerLabel = "欄位", valueLabel = "內容") {
@@ -938,7 +962,7 @@ export async function exportAiReviewReportToExcel({ details, issues = [], metada
 }
 
 export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [] }) {
-    const { rows, merges, columnWidths } = buildIssuesTreeRowsFromProject(project, reports);
+    const { rows, merges, columnWidths, rowStyleIndices } = buildIssuesTreeRowsFromProject(project, reports);
     if (rows.length <= 1) {
         throw new Error("缺少可匯出的問題資料");
     }
@@ -951,6 +975,7 @@ export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [
             headerRows: 1,
             bodyStyleIndex: 0,
             headerStyleIndex: 1,
+            rowStyleIndices,
             freezeHeader: true
         }
     ];
