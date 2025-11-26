@@ -184,7 +184,12 @@ function normaliseRows(rows) {
     });
 }
 
-function buildWorksheetXml(rows) {
+function buildWorksheetXml(sheetInput) {
+    const rows = Array.isArray(sheetInput) ? sheetInput : sheetInput?.rows;
+    const merges = Array.isArray(sheetInput?.merges)
+        ? sheetInput.merges.filter((entry) => typeof entry === "string" && entry.trim())
+        : [];
+
     const normalised = normaliseRows(rows);
     const rowXml = [];
     let maxColumnCount = 0;
@@ -204,6 +209,11 @@ function buildWorksheetXml(rows) {
     const lastColumn = maxColumnCount > 0 ? toColumnLetter(maxColumnCount - 1) : "A";
     const lastRow = normalised.length > 0 ? normalised.length : 1;
     const dimension = `A1:${lastColumn}${lastRow}`;
+    const mergeXml = merges.length
+        ? `<mergeCells count="${merges.length}">${merges
+              .map((range) => `<mergeCell ref="${escapeXmlAttribute(range)}"/>`)
+              .join("")}</mergeCells>`
+        : "";
 
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
         `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ` +
@@ -212,6 +222,7 @@ function buildWorksheetXml(rows) {
         `<sheetViews><sheetView workbookViewId="0"/></sheetViews>` +
         `<sheetFormatPr defaultRowHeight="15"/>` +
         `<sheetData>${rowXml.join("")}</sheetData>` +
+        mergeXml +
         `<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>` +
         `</worksheet>`;
 }
@@ -308,7 +319,7 @@ async function createWorkbookBlob(sheets) {
     preparedSheets.forEach((sheet, index) => {
         entries.push({
             path: `xl/worksheets/sheet${index + 1}.xml`,
-            content: buildWorksheetXml(sheet.rows)
+            content: buildWorksheetXml(sheet)
         });
     });
 
@@ -490,6 +501,8 @@ function buildIssuesTreeRowsFromProject(project, reports) {
 
     const projectName = pickFirstString(project?.name, project?.id);
     const rows = [header];
+    const merges = [];
+    let currentRow = 2; // account for header row
 
     (Array.isArray(reports) ? reports : []).forEach((report) => {
         const filePath = pickFirstString(report?.path, report?.file, report?.filename);
@@ -520,6 +533,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
             const fixedCode = toMultiline(raw.fixed_code ?? raw.fix_code ?? raw.fix);
 
             const rowCount = Math.max(severityLevels.length, ruleIds.length, childIssues.length, 1);
+            const startRow = currentRow;
             for (let index = 0; index < rowCount; index += 1) {
                 const subIssue = childIssues[index];
                 const subSeverity = severityLevels[index] ?? "";
@@ -550,11 +564,20 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                     recommendation,
                     fixedCode
                 ]);
+                currentRow += 1;
+            }
+
+            const endRow = startRow + rowCount - 1;
+            if (rowCount > 1) {
+                [0, 1, 2].forEach((columnIndex) => {
+                    const columnLetter = toColumnLetter(columnIndex);
+                    merges.push(`${columnLetter}${startRow}:${columnLetter}${endRow}`);
+                });
             }
         });
     });
 
-    return rows;
+    return { rows, merges };
 }
 
 function buildKeyValueRows(items, headerLabel = "欄位", valueLabel = "內容") {
@@ -846,11 +869,11 @@ export async function exportAiReviewReportToExcel({ details, issues = [], metada
 }
 
 export async function exportProjectIssuesTreeToExcel({ project = {}, reports = [] }) {
-    const rows = buildIssuesTreeRowsFromProject(project, reports);
+    const { rows, merges } = buildIssuesTreeRowsFromProject(project, reports);
     if (rows.length <= 1) {
         throw new Error("缺少可匯出的問題資料");
     }
-    const sheets = [{ name: "IssuesTree", rows }];
+    const sheets = [{ name: "IssuesTree", rows, merges }];
     const metadata = { projectName: project.name ?? project.id ?? "", type: "IssuesTree" };
     await exportSheetsAsWorkbook({ sheets, metadata, fallbackType: "IssuesTree" });
 }
