@@ -565,7 +565,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     const columnWidths = [18, 48, 12, 18, 18, 12, 60, 52, 52];
 
     let currentGroupKey = "";
-    let stripeToggle = false;
+    let currentStripeIndex = 2; // default stripe A; flips to 3 on each new group
 
     (Array.isArray(reports) ? reports : []).forEach((report) => {
         const filePath = pickFirstString(report?.path, report?.file, report?.filename);
@@ -598,8 +598,10 @@ function buildIssuesTreeRowsFromProject(project, reports) {
             const rowCount = Math.max(severityLevels.length, ruleIds.length, childIssues.length, 1);
             const groupKey = `${projectName}||${filePath}`;
             if (groupKey !== currentGroupKey) {
+                if (currentGroupKey) {
+                    currentStripeIndex = currentStripeIndex === 2 ? 3 : 2;
+                }
                 currentGroupKey = groupKey;
-                stripeToggle = false;
             }
 
             for (let index = 0; index < rowCount; index += 1) {
@@ -645,9 +647,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                 ]);
 
                 // styles: 2 = stripe A (#D9E2F3), 3 = stripe B (#F7F9FC)
-                const stripeStyleIndex = stripeToggle ? 3 : 2;
-                rowStyleIndices.push(stripeStyleIndex);
-                stripeToggle = !stripeToggle;
+                rowStyleIndices.push(currentStripeIndex);
             }
 
         });
