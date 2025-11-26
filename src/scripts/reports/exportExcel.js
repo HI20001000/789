@@ -259,36 +259,37 @@ function buildWorksheetXml(sheetInput) {
 }
 
 function buildStylesXml() {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
-        `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-        `<fonts count="2">` +
-        `<font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/></font>` +
-        `<font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/><b/></font>` +
+    return `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n` +
+        `<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">` +
+        `<fonts count=\"2\">` +
+        `<font><sz val=\"11\"/><color rgb=\"FF000000\"/><name val=\"Calibri\"/><family val=\"2\"/></font>` +
+        `<font><sz val=\"11\"/><color rgb=\"FF000000\"/><name val=\"Calibri\"/><family val=\"2\"/><b/></font>` +
         `</fonts>` +
-        `<fills count="4">` +
-        `<fill><patternFill patternType="none"/></fill>` +
-        `<fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/></patternFill></fill>` +
-        `<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill>` +
-        `<fill><patternFill patternType="solid"><fgColor rgb="FFF7F9FC"/></patternFill></fill>` +
+        `<fills count=\"5\">` +
+        `<fill><patternFill patternType=\"none\"/></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF1F4E78\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFD9E2F3\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFFFFF\"/></patternFill></fill>` +
+        `<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFF7F9FC\"/></patternFill></fill>` +
         `</fills>` +
-        `<borders count="2">` +
+        `<borders count=\"2\">` +
         `<border><left/><right/><top/><bottom/><diagonal/></border>` +
         `<border>` +
-        `<left style="thin"><color rgb="FFE2E8F0"/></left>` +
-        `<right style="thin"><color rgb="FFE2E8F0"/></right>` +
-        `<top style="thin"><color rgb="FFE2E8F0"/></top>` +
-        `<bottom style="thin"><color rgb="FFE2E8F0"/></bottom>` +
+        `<left style=\"thin\"><color rgb=\"FFE2E8F0\"/></left>` +
+        `<right style=\"thin\"><color rgb=\"FFE2E8F0\"/></right>` +
+        `<top style=\"thin\"><color rgb=\"FFE2E8F0\"/></top>` +
+        `<bottom style=\"thin\"><color rgb=\"FFE2E8F0\"/></bottom>` +
         `<diagonal/>` +
         `</border>` +
         `</borders>` +
-        `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-        `<cellXfs count="4">` +
-        `<xf numFmtId="0" fontId="0" fillId="2" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
-        `<xf numFmtId="0" fontId="1" fillId="1" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
-        `<xf numFmtId="0" fontId="0" fillId="1" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
-        `<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>` +
+        `<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>` +
+        `<cellXfs count=\"4\">` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"3\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"1\" fillId=\"1\" borderId=\"1\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"2\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
+        `<xf numFmtId=\"0\" fontId=\"0\" fillId=\"4\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>` +
         `</cellXfs>` +
-        `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
+        `<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>` +
         `</styleSheet>`;
 }
 
@@ -549,6 +550,7 @@ function buildIssuesTreeRowsFromProject(project, reports) {
         "severity",
         "rule_ids",
         "severity_levels",
+        "line",
         "issues",
         "recommendation",
         "fixed_code"
@@ -558,7 +560,10 @@ function buildIssuesTreeRowsFromProject(project, reports) {
     const rows = [header];
     const rowStyleIndices = [undefined];
     const merges = [];
-    const columnWidths = [18, 48, 12, 18, 18, 60, 52, 52];
+    const columnWidths = [18, 48, 12, 18, 18, 12, 60, 52, 52];
+
+    let currentGroupKey = "";
+    let stripeToggle = false;
 
     (Array.isArray(reports) ? reports : []).forEach((report) => {
         const filePath = pickFirstString(report?.path, report?.file, report?.filename);
@@ -589,13 +594,26 @@ function buildIssuesTreeRowsFromProject(project, reports) {
             const fixedCode = toMultiline(raw.fixed_code ?? raw.fix_code ?? raw.fix);
 
             const rowCount = Math.max(severityLevels.length, ruleIds.length, childIssues.length, 1);
-            let currentSeverityKey = typeof severity === "string" ? severity.trim() : "";
-            let stripeToggle = false;
+            const groupKey = `${projectName}||${filePath}`;
+            if (groupKey !== currentGroupKey) {
+                currentGroupKey = groupKey;
+                stripeToggle = false;
+            }
 
             for (let index = 0; index < rowCount; index += 1) {
                 const subIssue = childIssues[index];
                 const subSeverity = severityLevels[index] ?? "";
                 const subRuleId = ruleIds[index] ?? "";
+                const subLine = normaliseLineLabel(
+                    subIssue?.line ??
+                        subIssue?.line_number ??
+                        subIssue?.lineNumber ??
+                        subIssue?.lineRange ??
+                        raw.line ??
+                        raw.line_number ??
+                        raw.lineNumber ??
+                        raw.lineRange
+                );
                 let subIssueText = fallbackIssueText ?? "";
                 if (typeof subIssue === "string" || typeof subIssue === "number") {
                     subIssueText = String(subIssue);
@@ -618,16 +636,11 @@ function buildIssuesTreeRowsFromProject(project, reports) {
                     severity,
                     subRuleId,
                     subSeverity,
+                    subLine,
                     subIssueText,
                     recommendation,
                     fixedCode
                 ]);
-
-                const severityKey = typeof severity === "string" ? severity.trim() : "";
-                if (severityKey !== currentSeverityKey) {
-                    currentSeverityKey = severityKey;
-                    stripeToggle = false;
-                }
 
                 const stripeStyleIndex = stripeToggle ? 3 : 2;
                 rowStyleIndices.push(stripeStyleIndex);
