@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import { extractSqlFromDocument } from "../services/apiService.js";
 
 const SQL_KEYWORD_PATTERN = /\b(select|update|insert|delete|create|alter|drop|with|merge|replace)\b/i;
