@@ -3133,25 +3133,25 @@ async function handleSaveRules() {
         ? settingLanguage.value
         : "SQL";
     const rules = Array.isArray(activeRuleSettings.value) ? activeRuleSettings.value : [];
-    const payload = rules
-        .map((rule) => ({
-            ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId || ""),
-            description: typeof rule?.description === "string" ? rule.description : "",
-            enabled: Boolean(rule?.enabled),
-            riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator : ""
-        }))
-        .filter((rule) => {
-            const hasContent = rule.ruleId || rule.description || rule.riskIndicator;
-            return hasContent;
-        });
+    const normalizedRules = rules.map((rule) => ({
+        ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId || ""),
+        description: typeof rule?.description === "string" ? rule.description.trim() : "",
+        enabled: Boolean(rule?.enabled),
+        riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator.trim() : ""
+    }));
 
-    const missingRequired = payload.find(
+    const missingRequired = normalizedRules.find(
         (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
     );
     if (missingRequired) {
         ruleSettingsState.message = "請完整填寫規則ID、描述與風險指標";
         return;
     }
+
+    const payload = normalizedRules.filter((rule) => {
+        const hasContent = rule.ruleId || rule.description || rule.riskIndicator;
+        return hasContent;
+    });
 
     const duplicates = new Set();
     const hasDuplicateRuleId = payload.some((rule) => {
