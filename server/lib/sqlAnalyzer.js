@@ -1200,31 +1200,15 @@ function normalisePositiveInteger(value) {
 }
 
 const STATEMENT_KEYWORDS = [
-    "SELECT",
-    "WITH",
     "INSERT",
     "UPDATE",
     "DELETE",
     "MERGE",
-    "UPSERT",
-    "REPLACE",
     "ALTER",
     "CREATE",
-    "DROP",
-    "TRUNCATE",
-    "RENAME",
-    "CALL",
-    "EXEC",
-    "EXECUTE",
-    "REORG",
-    "GRANT",
-    "REVOKE",
-    "COMMENT",
-    "ANALYZE",
-    "ANALYSE",
-    "DESCRIBE",
-    "EXPLAIN"
+    "LOAD"
 ];
+
 
 const STATEMENT_KEYWORD_PATTERN = new RegExp(`^(${STATEMENT_KEYWORDS.join("|")})\\b`, "i");
 
