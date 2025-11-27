@@ -1209,7 +1209,7 @@ const STATEMENT_KEYWORDS = [
     "LOAD"
 ];
 
-const STATEMENT_KEYWORD_SEARCH_PATTERN = new RegExp(`\\b(${STATEMENT_KEYWORDS.join("|")})\\b`, "i");
+const STATEMENT_KEYWORD_SEARCH_PATTERN = new RegExp(`\\b(${STATEMENT_KEYWORDS.join("|")})\\b`, "ig");
 
 export function extractDmlStatements(sqlText) {
     if (typeof sqlText !== "string" || !sqlText.trim()) {
