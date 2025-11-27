@@ -1583,11 +1583,6 @@ const reportIssueLines = computed(() => {
             const lineRanges = endingIssues
                 .map((issue) => ensureIssueLineMeta(issue)?.label || "")
                 .filter(Boolean);
-            console.log("[codeLineContent--issueHighlight]", {
-                line: lineNumber,
-                range: lineRanges.join(", ") || null,
-                issueCount: endingIssues.length
-            });
             result.push(buildIssueMetaLine("issues", lineNumber, endingIssues));
             result.push(buildIssueMetaLine("fix", lineNumber, endingIssues));
         }
@@ -2335,15 +2330,6 @@ function logReportDebugInfo(report, details) {
         parsedReport: state.parsedReport || null
     };
 
-    console.groupCollapsed("[Report][Debug] Selected report payload");
-    console.log(payload);
-    console.groupEnd();
-
-    if (details && details.issues) {
-        console.groupCollapsed("[Report][Debug] Issue line ranges");
-        console.log(issueDebugEntries);
-        console.groupEnd();
-    }
 }
 
 function buildIssueDetailsHtml(issues, isOrphan = false) {
@@ -2438,15 +2424,6 @@ function buildIssueDetailsHtml(issues, isOrphan = false) {
             const meta = metaParts.length
                 ? `<span class="reportIssueInlineMeta">${metaParts.join(" · ")}</span>`
                 : "";
-
-            const logLineLabel = lineLabel || (Number.isFinite(lineIndex) ? `#${lineIndex}` : "(unknown)");
-            console.log("[reportIssueInlineRow]", {
-                line: logLineLabel,
-                detailIndex,
-                isOrphan,
-                hasColumn: Number.isFinite(detail?.column),
-                severity: detail?.severityLabel || issue?.severityLabel || null
-            });
 
             rows.push(`<div class="reportIssueInlineRow">${badgeBlock}${message}${issueList}${meta}</div>`);
         });
