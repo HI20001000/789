@@ -1315,14 +1315,6 @@ app.post("/api/documents/sql-text", async (req, res, next) => {
         });
         res.json({ text: typeof text === "string" ? text : "" });
     } catch (error) {
-        if (error?.code === "PYTHON_NOT_FOUND") {
-            res.status(503).json({
-                message:
-                    "Document SQL extraction requires Python (python3 or python) on the server. Install Python or set PYTHON/PYTHON_BIN to a valid interpreter.",
-                details: error.message
-            });
-            return;
-        }
         next(error);
     }
 });
