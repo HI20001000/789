@@ -114,7 +114,6 @@ export function useProjectsStore({ preview, fileSystem }) {
             const built = await treeStore.loadTreeFromDB(currentId);
             if (selectedProjectId.value === currentId) {
                 treeStore.tree.value = built;
-                console.log(`[Tree] built for ${currentId}: roots=${built.length}`);
             }
         } catch (error) {
             if (selectedProjectId.value === currentId) {
@@ -264,8 +263,12 @@ export function useProjectsStore({ preview, fileSystem }) {
             });
 
             try {
-                if (preview.isTextLike(name, file.type || "") && file.size <= preview.MAX_TEXT_BYTES) {
-                    const text = await file.text();
+                if (preview.isTextPreviewable(name, file.type || "") && file.size <= preview.MAX_TEXT_BYTES * 4) {
+                    const text = await preview.readTextContent(file, {
+                        name,
+                        mime: file.type || "",
+                        maxBytes: preview.MAX_TEXT_BYTES * 4
+                    });
                     storedFiles.push({
                         path: relPath,
                         content: text,

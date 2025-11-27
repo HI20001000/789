@@ -67,6 +67,8 @@ const treeStore = useTreeStore({
     getFileHandleByPath: fileSystemService.getFileHandleByPath,
     previewing: preview.previewing,
     isTextLike: preview.isTextLike,
+    isTextPreviewable: preview.isTextPreviewable,
+    readTextContent: preview.readTextContent,
     MAX_TEXT_BYTES: preview.MAX_TEXT_BYTES,
     selectedProjectId: projectsStore.selectedProjectId,
     fetchStoredFileContent: projectsStore.fetchStoredFileContent
@@ -1583,11 +1585,6 @@ const reportIssueLines = computed(() => {
             const lineRanges = endingIssues
                 .map((issue) => ensureIssueLineMeta(issue)?.label || "")
                 .filter(Boolean);
-            console.log("[codeLineContent--issueHighlight]", {
-                line: lineNumber,
-                range: lineRanges.join(", ") || null,
-                issueCount: endingIssues.length
-            });
             result.push(buildIssueMetaLine("issues", lineNumber, endingIssues));
             result.push(buildIssueMetaLine("fix", lineNumber, endingIssues));
         }
@@ -2335,15 +2332,6 @@ function logReportDebugInfo(report, details) {
         parsedReport: state.parsedReport || null
     };
 
-    console.groupCollapsed("[Report][Debug] Selected report payload");
-    console.log(payload);
-    console.groupEnd();
-
-    if (details && details.issues) {
-        console.groupCollapsed("[Report][Debug] Issue line ranges");
-        console.log(issueDebugEntries);
-        console.groupEnd();
-    }
 }
 
 function buildIssueDetailsHtml(issues, isOrphan = false) {
@@ -2438,15 +2426,6 @@ function buildIssueDetailsHtml(issues, isOrphan = false) {
             const meta = metaParts.length
                 ? `<span class="reportIssueInlineMeta">${metaParts.join(" · ")}</span>`
                 : "";
-
-            const logLineLabel = lineLabel || (Number.isFinite(lineIndex) ? `#${lineIndex}` : "(unknown)");
-            console.log("[reportIssueInlineRow]", {
-                line: logLineLabel,
-                detailIndex,
-                isOrphan,
-                hasColumn: Number.isFinite(detail?.column),
-                severity: detail?.severityLabel || issue?.severityLabel || null
-            });
 
             rows.push(`<div class="reportIssueInlineRow">${badgeBlock}${message}${issueList}${meta}</div>`);
         });
@@ -3154,25 +3133,25 @@ async function handleSaveRules() {
         ? settingLanguage.value
         : "SQL";
     const rules = Array.isArray(activeRuleSettings.value) ? activeRuleSettings.value : [];
-    const payload = rules
-        .map((rule) => ({
-            ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId || ""),
-            description: typeof rule?.description === "string" ? rule.description : "",
-            enabled: Boolean(rule?.enabled),
-            riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator : ""
-        }))
-        .filter((rule) => {
-            const hasContent = rule.ruleId || rule.description || rule.riskIndicator;
-            return hasContent;
-        });
+    const normalizedRules = rules.map((rule) => ({
+        ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : String(rule?.ruleId || ""),
+        description: typeof rule?.description === "string" ? rule.description.trim() : "",
+        enabled: Boolean(rule?.enabled),
+        riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator.trim() : ""
+    }));
 
-    const missingRequired = payload.find(
+    const missingRequired = normalizedRules.find(
         (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
     );
     if (missingRequired) {
         ruleSettingsState.message = "請完整填寫規則ID、描述與風險指標";
         return;
     }
+
+    const payload = normalizedRules.filter((rule) => {
+        const hasContent = rule.ruleId || rule.description || rule.riskIndicator;
+        return hasContent;
+    });
 
     const duplicates = new Set();
     const hasDuplicateRuleId = payload.some((rule) => {
@@ -4029,10 +4008,14 @@ async function loadTextContentForNode(project, node) {
         const fileHandle = await fileSystemService.getFileHandleByPath(root, node.path);
         const file = await fileHandle.getFile();
         const mime = node.mime || file.type || "";
-        if (!preview.isTextLike(node.name, mime)) {
-            throw new Error("目前僅支援純文字或程式碼檔案的審查");
+        if (!preview.isTextPreviewable(node.name, mime)) {
+            throw new Error("目前僅支援純文字、程式碼或包含 SQL 的文件審查");
         }
-        const text = await file.text();
+        const text = await preview.readTextContent(file, {
+            name: node.name,
+            mime,
+            maxBytes: preview.MAX_TEXT_BYTES * 2
+        });
         if (!text.trim()) {
             throw new Error("檔案內容為空");
         }
@@ -4046,8 +4029,8 @@ async function loadTextContentForNode(project, node) {
             throw new Error("無法從資料庫讀取檔案內容，請重新匯入資料夾。");
         }
         const mime = record.mime || node.mime || "text/plain";
-        if (!preview.isTextLike(node.name, mime)) {
-            throw new Error("目前僅支援純文字或程式碼檔案的審查");
+        if (!preview.isTextPreviewable(node.name, mime)) {
+            throw new Error("目前僅支援純文字、程式碼或包含 SQL 的文件審查");
         }
         const text = record.content;
         if (!text.trim()) {
