@@ -1219,12 +1219,10 @@ export function extractDmlStatements(sqlText) {
     const masked = maskCommentsAndStrings(sqlText);
     const segments = [];
 
-    const keywordPattern = new RegExp(
-        STATEMENT_KEYWORD_SEARCH_PATTERN.source,
-        STATEMENT_KEYWORD_SEARCH_PATTERN.flags.includes("g")
-            ? STATEMENT_KEYWORD_SEARCH_PATTERN.flags
-            : `${STATEMENT_KEYWORD_SEARCH_PATTERN.flags}g`
-    );
+    // Always use a guaranteed-global, case-insensitive pattern to satisfy
+    // String.prototype.matchAll requirements regardless of any upstream
+    // mutation of STATEMENT_KEYWORD_SEARCH_PATTERN.flags.
+    const keywordPattern = new RegExp(STATEMENT_KEYWORD_SEARCH_PATTERN.source, "ig");
 
     let offset = 0;
     while (offset < masked.length) {
