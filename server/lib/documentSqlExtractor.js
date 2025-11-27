@@ -1,8 +1,47 @@
-import JSZip from "jszip";
+import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { extractDmlStatements } from "./sqlAnalyzer.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PY_EXTRACTOR = join(__dirname, "document_sql_extractor.py");
 const WORD_KIND = "word";
 const EXCEL_KIND = "excel";
+
+function normaliseBase64Payload(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("data:")) {
+        const comma = trimmed.indexOf(",");
+        return comma === -1 ? trimmed : trimmed.slice(comma + 1);
+    }
+    return trimmed;
+}
+
+async function extractRawTextWithPython({ base64, name = "", mime = "" }) {
+    return await new Promise((resolve) => {
+        const child = spawn("python3", [PY_EXTRACTOR], { stdio: ["pipe", "pipe", "inherit"] });
+        let stdout = "";
+
+        child.stdout.on("data", (chunk) => {
+            stdout += chunk.toString();
+        });
+
+        child.on("error", () => resolve(""));
+        child.on("close", () => {
+            try {
+                const parsed = JSON.parse(stdout || "{}");
+                resolve(typeof parsed?.text === "string" ? parsed.text : "");
+            } catch (error) {
+                resolve("");
+            }
+        });
+
+        const payload = { base64, data: base64, name, mime };
+        child.stdin.write(JSON.stringify(payload));
+        child.stdin.end();
+    });
+}
 
 function detectDocumentKind(name, mime) {
     const lower = (name || "").toLowerCase();
@@ -16,93 +55,33 @@ function detectDocumentKind(name, mime) {
     return "";
 }
 
-function decodeXmlEntities(text) {
-    return (text || "")
-        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-        .replace(/&#([0-9]+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
-        .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&amp;/g, "&");
-}
-
-function stripXmlTags(xml) {
-    return decodeXmlEntities((xml || "").replace(/<[^>]+>/g, " "))
-        .replace(/[\s\u00A0]+/g, " ")
-        .trim();
-}
-
-function normaliseEntries(zip) {
-    return Object.values(zip.files || {});
-}
-
-async function extractWordText(zip) {
-    const doc = zip.file("word/document.xml");
-    if (!doc) return "";
-
-    const xml = await doc.async("string");
-    const matches = Array.from(xml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/gim));
-    const texts = matches.map((match) => stripXmlTags(match[1])).filter((text) => text);
-    return texts.join("\n");
-}
-
-async function extractExcelText(zip) {
-    const rows = [];
-    const targets = normaliseEntries(zip).filter(
-        (entry) => entry.name === "xl/sharedStrings.xml" || (entry.name?.startsWith("xl/worksheets/") && entry.name.endsWith(".xml"))
-    );
-
-    for (const entry of targets) {
-        const xml = await entry.async("string");
-        const flattened = stripXmlTags(xml);
-        if (flattened) rows.push(flattened);
-    }
-
-    return rows.join("\n");
-}
-
-async function extractFallbackXmlText(zip) {
-    const rows = [];
-    for (const entry of normaliseEntries(zip)) {
-        if (!entry.name?.toLowerCase().endsWith(".xml")) continue;
-        const flattened = stripXmlTags(await entry.async("string"));
-        if (flattened) rows.push(flattened);
-    }
-    return rows.join("\n");
-}
-
 export async function extractSqlTextFromDocument({ base64, name = "", mime = "" }) {
     if (!base64 || typeof base64 !== "string") {
         return "";
     }
+
+    const normalisedBase64 = normaliseBase64Payload(base64);
+    if (!normalisedBase64) return "";
 
     const kind = detectDocumentKind(name, mime);
     if (!kind) {
         return "";
     }
 
-    let zip;
+    let rawText = "";
     try {
-        const buffer = Buffer.from(base64, "base64");
-        zip = await JSZip.loadAsync(buffer);
+        rawText = await extractRawTextWithPython({ base64: normalisedBase64, name, mime });
     } catch (error) {
-        return "";
+        rawText = "";
     }
 
-    try {
-        const primaryText = kind === WORD_KIND ? await extractWordText(zip) : await extractExcelText(zip);
-        const rawText = (primaryText && primaryText.trim()) ? primaryText : await extractFallbackXmlText(zip);
-        const segments = extractDmlStatements(rawText);
-        const dmlText = segments
-            .map((segment) => (typeof segment?.text === "string" ? segment.text.trim() : ""))
-            .filter(Boolean)
-            .join("\n\n");
-        if (dmlText) {
-            return dmlText;
-        }
-        return rawText?.trim?.() || "";
-    } catch (error) {
-        return "";
-    }
+    if (!rawText) return "";
+
+    const segments = extractDmlStatements(rawText);
+    const dmlText = segments
+        .map((segment) => (typeof segment?.text === "string" ? segment.text.trim() : ""))
+        .filter(Boolean)
+        .join("\n\n");
+
+    return dmlText || rawText.trim();
 }
