@@ -1,5 +1,7 @@
-import JSZip from "../vendor/jszip.min.js";
+import "../vendor/jszip.min.js";
 import { extractSqlFromDocument } from "../services/apiService.js";
+
+const JSZip = globalThis.JSZip;
 
 const SQL_KEYWORD_PATTERN = /\b(select|update|insert|delete|create|alter|drop|with|merge|replace)\b/i;
 const SQL_DOC_EXTS = new Set(["doc", "docx", "xls", "xlsx"]);
