@@ -2206,7 +2206,6 @@ export function buildSqlReportPayload({
     });
     const aiIssuesJson = serialiseIssuesJson(reportsAiIssues);
 
-    logIssuesJson("static.issues.json.pre_aggregate", staticIssuesJson);
     logIssuesJson("ai.issues.json.pre_aggregate", aiIssuesJson);
 
     const combinedIssuesForReports = dedupeIssueList([
@@ -2409,5 +2408,6 @@ export function isSqlPath(filePath) {
     if (!filePath || typeof filePath !== "string") {
         return false;
     }
-    return filePath.trim().toLowerCase().endsWith(".sql");
+    const lower = filePath.trim().toLowerCase();
+    return [".sql", ".doc", ".docx", ".xls", ".xlsx"].some((ext) => lower.endsWith(ext));
 }

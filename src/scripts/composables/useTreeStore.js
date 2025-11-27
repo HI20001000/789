@@ -7,6 +7,8 @@ export function useTreeStore({
     getFileHandleByPath,
     previewing,
     isTextLike,
+    isTextPreviewable,
+    readTextContent,
     MAX_TEXT_BYTES,
     selectedProjectId,
     fetchStoredFileContent
@@ -82,8 +84,12 @@ export function useTreeStore({
                         size = file.size;
                         lastModified = file.lastModified || 0;
                         mime = file.type || "";
-                        if (isTextLike(name, mime) && size <= MAX_TEXT_BYTES) {
-                            textContent = await file.text();
+                        if (isTextPreviewable(name, mime) && size <= MAX_TEXT_BYTES * 4) {
+                            textContent = await readTextContent(file, {
+                                name,
+                                mime,
+                                maxBytes: MAX_TEXT_BYTES * 4
+                            });
                         }
                     } catch (_) {
                         // ignore file read errors
@@ -170,8 +176,12 @@ export function useTreeStore({
                 };
                 return;
             }
-            if (isTextLike(node.name, mime) && size <= MAX_TEXT_BYTES) {
-                const text = await file.text();
+            if (isTextPreviewable(node.name, mime)) {
+                const text = await readTextContent(file, {
+                    name: node.name,
+                    mime,
+                    maxBytes: MAX_TEXT_BYTES * 2
+                });
                 previewing.value = {
                     name: node.name,
                     mime: mime || "text/plain",
