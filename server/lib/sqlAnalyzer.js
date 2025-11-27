@@ -1211,6 +1211,12 @@ const STATEMENT_KEYWORDS = [
 
 const STATEMENT_KEYWORD_SEARCH_PATTERN = new RegExp(`\\b(${STATEMENT_KEYWORDS.join("|")})\\b`, "ig");
 
+function ensureGlobalRegExp(pattern, extraFlags = "") {
+    const flags = new Set(`${pattern?.flags ?? ""}${extraFlags}`.split(""));
+    flags.add("g");
+    return new RegExp(pattern?.source ?? "", Array.from(flags).join(""));
+}
+
 export function extractDmlStatements(sqlText) {
     if (typeof sqlText !== "string" || !sqlText.trim()) {
         return [];
@@ -1222,7 +1228,7 @@ export function extractDmlStatements(sqlText) {
     // Always use a guaranteed-global, case-insensitive pattern to satisfy
     // String.prototype.matchAll requirements regardless of any upstream
     // mutation of STATEMENT_KEYWORD_SEARCH_PATTERN.flags.
-    const keywordPattern = new RegExp(STATEMENT_KEYWORD_SEARCH_PATTERN.source, "ig");
+    const keywordPattern = ensureGlobalRegExp(STATEMENT_KEYWORD_SEARCH_PATTERN, "i");
 
     let offset = 0;
     while (offset < masked.length) {
