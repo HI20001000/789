@@ -1219,6 +1219,13 @@ export function extractDmlStatements(sqlText) {
     const masked = maskCommentsAndStrings(sqlText);
     const segments = [];
 
+    const keywordPattern = new RegExp(
+        STATEMENT_KEYWORD_SEARCH_PATTERN.source,
+        STATEMENT_KEYWORD_SEARCH_PATTERN.flags.includes("g")
+            ? STATEMENT_KEYWORD_SEARCH_PATTERN.flags
+            : `${STATEMENT_KEYWORD_SEARCH_PATTERN.flags}g`
+    );
+
     let offset = 0;
     while (offset < masked.length) {
         let start = offset;
@@ -1237,7 +1244,7 @@ export function extractDmlStatements(sqlText) {
         }
 
         const keywordCandidate = masked.slice(start, end);
-        const keywordMatches = Array.from(keywordCandidate.matchAll(STATEMENT_KEYWORD_SEARCH_PATTERN));
+        const keywordMatches = Array.from(keywordCandidate.matchAll(keywordPattern));
         const keywordMatch = keywordMatches.length ? keywordMatches[keywordMatches.length - 1] : null;
         let nextOffset = end;
         if (keywordMatch && keywordMatch.index !== undefined) {
