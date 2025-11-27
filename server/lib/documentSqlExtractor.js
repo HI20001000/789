@@ -1,9 +1,5 @@
-import { inflateRawSync } from "node:zlib";
+import JSZip from "jszip";
 import { extractDmlStatements } from "./sqlAnalyzer.js";
-
-const EOCD_SIGNATURE = 0x06054b50;
-const CENTRAL_SIGNATURE = 0x02014b50;
-const LOCAL_SIGNATURE = 0x04034b50;
 
 const WORD_KIND = "word";
 const EXCEL_KIND = "excel";
@@ -37,120 +33,40 @@ function stripXmlTags(xml) {
         .trim();
 }
 
-function findEndOfCentralDirectory(buffer) {
-    const minOffset = Math.max(0, buffer.length - 0xffff - 22);
-    for (let i = buffer.length - 22; i >= minOffset; i--) {
-        if (buffer.readUInt32LE(i) === EOCD_SIGNATURE) {
-            return i;
-        }
-    }
-    return -1;
+function normaliseEntries(zip) {
+    return Object.values(zip.files || {});
 }
 
-function listEntries(buffer) {
-    const entries = [];
-    const eocdOffset = findEndOfCentralDirectory(buffer);
-    if (eocdOffset < 0) return entries;
+async function extractWordText(zip) {
+    const doc = zip.file("word/document.xml");
+    if (!doc) return "";
 
-    const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
-    let offset = buffer.readUInt32LE(eocdOffset + 16);
-
-    for (let i = 0; i < totalEntries; i++) {
-        if (buffer.readUInt32LE(offset) !== CENTRAL_SIGNATURE) {
-            break;
-        }
-
-        const compressionMethod = buffer.readUInt16LE(offset + 10);
-        const compressedSize = buffer.readUInt32LE(offset + 20);
-        const uncompressedSize = buffer.readUInt32LE(offset + 24);
-        const fileNameLength = buffer.readUInt16LE(offset + 28);
-        const extraLength = buffer.readUInt16LE(offset + 30);
-        const commentLength = buffer.readUInt16LE(offset + 32);
-        const localHeaderOffset = buffer.readUInt32LE(offset + 42);
-        const nameStart = offset + 46;
-
-        const name = buffer.slice(nameStart, nameStart + fileNameLength).toString("utf8");
-        entries.push({
-            name,
-            compressionMethod,
-            compressedSize,
-            uncompressedSize,
-            localHeaderOffset
-        });
-
-        offset = nameStart + fileNameLength + extraLength + commentLength;
-    }
-
-    return entries;
-}
-
-function extractEntry(buffer, entry) {
-    const headerOffset = entry.localHeaderOffset;
-    if (buffer.readUInt32LE(headerOffset) !== LOCAL_SIGNATURE) {
-        return null;
-    }
-
-    const fileNameLength = buffer.readUInt16LE(headerOffset + 26);
-    const extraLength = buffer.readUInt16LE(headerOffset + 28);
-    const dataStart = headerOffset + 30 + fileNameLength + extraLength;
-    const dataEnd = dataStart + entry.compressedSize;
-    if (dataStart < 0 || dataEnd > buffer.length) {
-        return null;
-    }
-    const compressedData = buffer.slice(dataStart, dataEnd);
-
-    if (entry.compressionMethod === 0) {
-        return compressedData;
-    }
-    if (entry.compressionMethod === 8) {
-        try {
-            return inflateRawSync(compressedData);
-        } catch (error) {
-            return null;
-        }
-    }
-
-    return null;
-}
-
-async function extractWordText(buffer, entries) {
-    const target = entries.find((entry) => entry.name === "word/document.xml");
-    if (!target) return "";
-
-    const content = extractEntry(buffer, target);
-    if (!content) return "";
-
-    const xml = content.toString("utf8");
+    const xml = await doc.async("string");
     const matches = Array.from(xml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/gim));
     const texts = matches.map((match) => stripXmlTags(match[1])).filter((text) => text);
     return texts.join("\n");
 }
 
-async function extractExcelText(buffer, entries) {
+async function extractExcelText(zip) {
     const rows = [];
-    for (const entry of entries) {
-        if (entry.name !== "xl/sharedStrings.xml" && !(entry.name.startsWith("xl/worksheets/") && entry.name.endsWith(".xml"))) {
-            continue;
-        }
-        const content = extractEntry(buffer, entry);
-        if (!content) continue;
-        const xml = content.toString("utf8");
+    const targets = normaliseEntries(zip).filter(
+        (entry) => entry.name === "xl/sharedStrings.xml" || (entry.name?.startsWith("xl/worksheets/") && entry.name.endsWith(".xml"))
+    );
+
+    for (const entry of targets) {
+        const xml = await entry.async("string");
         const flattened = stripXmlTags(xml);
-        if (flattened) {
-            rows.push(flattened);
-        }
+        if (flattened) rows.push(flattened);
     }
 
     return rows.join("\n");
 }
 
-async function extractFallbackXmlText(buffer, entries) {
+async function extractFallbackXmlText(zip) {
     const rows = [];
-    for (const entry of entries) {
-        if (!entry.name.toLowerCase().endsWith(".xml")) continue;
-        const content = extractEntry(buffer, entry);
-        if (!content) continue;
-        const flattened = stripXmlTags(content.toString("utf8"));
+    for (const entry of normaliseEntries(zip)) {
+        if (!entry.name?.toLowerCase().endsWith(".xml")) continue;
+        const flattened = stripXmlTags(await entry.async("string"));
         if (flattened) rows.push(flattened);
     }
     return rows.join("\n");
@@ -166,22 +82,17 @@ export async function extractSqlTextFromDocument({ base64, name = "", mime = "" 
         return "";
     }
 
-    let buffer;
+    let zip;
     try {
-        buffer = Buffer.from(base64, "base64");
+        const buffer = Buffer.from(base64, "base64");
+        zip = await JSZip.loadAsync(buffer);
     } catch (error) {
         return "";
     }
 
-    const entries = listEntries(buffer);
-    if (!entries.length) {
-        return "";
-    }
-
     try {
-        const primaryText =
-            kind === WORD_KIND ? await extractWordText(buffer, entries) : await extractExcelText(buffer, entries);
-        const rawText = (primaryText && primaryText.trim()) ? primaryText : await extractFallbackXmlText(buffer, entries);
+        const primaryText = kind === WORD_KIND ? await extractWordText(zip) : await extractExcelText(zip);
+        const rawText = (primaryText && primaryText.trim()) ? primaryText : await extractFallbackXmlText(zip);
         const segments = extractDmlStatements(rawText);
         const dmlText = segments
             .map((segment) => (typeof segment?.text === "string" ? segment.text.trim() : ""))
@@ -195,4 +106,3 @@ export async function extractSqlTextFromDocument({ base64, name = "", mime = "" 
         return "";
     }
 }
-
