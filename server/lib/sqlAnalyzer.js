@@ -1209,7 +1209,7 @@ const STATEMENT_KEYWORDS = [
     "LOAD"
 ];
 
-const STATEMENT_KEYWORD_SEARCH_PATTERN = new RegExp(`\\b(${STATEMENT_KEYWORDS.join("|")})\\b`, "i");
+const STATEMENT_KEYWORD_SEARCH_PATTERN = new RegExp(`\\b(${STATEMENT_KEYWORDS.join("|")})\\b`, "ig");
 
 export function extractDmlStatements(sqlText) {
     if (typeof sqlText !== "string" || !sqlText.trim()) {
@@ -1218,6 +1218,11 @@ export function extractDmlStatements(sqlText) {
 
     const masked = maskCommentsAndStrings(sqlText);
     const segments = [];
+
+    // Always use a guaranteed-global, case-insensitive pattern to satisfy
+    // String.prototype.matchAll requirements regardless of any upstream
+    // mutation of STATEMENT_KEYWORD_SEARCH_PATTERN.flags.
+    const keywordPattern = new RegExp(STATEMENT_KEYWORD_SEARCH_PATTERN.source, "ig");
 
     let offset = 0;
     while (offset < masked.length) {
@@ -1237,7 +1242,7 @@ export function extractDmlStatements(sqlText) {
         }
 
         const keywordCandidate = masked.slice(start, end);
-        const keywordMatches = Array.from(keywordCandidate.matchAll(STATEMENT_KEYWORD_SEARCH_PATTERN));
+        const keywordMatches = Array.from(keywordCandidate.matchAll(keywordPattern));
         const keywordMatch = keywordMatches.length ? keywordMatches[keywordMatches.length - 1] : null;
         let nextOffset = end;
         if (keywordMatch && keywordMatch.index !== undefined) {

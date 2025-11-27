@@ -72,6 +72,29 @@ def _cell_value(cell, shared_strings):
     return value.text if value is not None else ""
 
 
+def _decode_entities(text: str) -> str:
+    return (
+        (text or "")
+        .replace("&quot;", '"')
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+    )
+
+
+def _strip_xml_tags(xml_text: str) -> str:
+    return (
+        _decode_entities(xml_text or "")
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace("\t", " ")
+        .replace("<", " <")
+        .replace(">", "> ")
+        .split()
+    )
+
+
 def extract_excel_text(buff: bytes):
     with zipfile.ZipFile(io.BytesIO(buff)) as archive:
         shared_strings = _load_shared_strings(archive)
@@ -92,13 +115,41 @@ def extract_excel_text(buff: bytes):
         return "\n".join(rows)
 
 
+def extract_fallback_xml_text(buff: bytes):
+    rows = []
+    with zipfile.ZipFile(io.BytesIO(buff)) as archive:
+        for name in archive.namelist():
+            if not name.lower().endswith(".xml"):
+                continue
+            try:
+                xml_bytes = archive.read(name)
+            except KeyError:
+                continue
+            flattened = " ".join(_strip_xml_tags(xml_bytes.decode(errors="ignore")))
+            if flattened.strip():
+                rows.append(flattened.strip())
+    return "\n".join(rows)
+
+
+def _normalise_base64_payload(text: str) -> str:
+    if not text:
+        return ""
+    trimmed = text.strip()
+    if not trimmed.startswith("data:"):
+        return trimmed
+    comma = trimmed.find(",")
+    return trimmed if comma == -1 else trimmed[comma + 1 :]
+
+
 def main():
     payload = _safe_load_json(sys.stdin.read())
     base64_data = payload.get("base64") or payload.get("data") or ""
     name = payload.get("name") or ""
     mime = payload.get("mime") or ""
 
-    if not base64_data:
+    normalised_base64 = _normalise_base64_payload(base64_data)
+
+    if not normalised_base64:
         json.dump({"text": ""}, sys.stdout)
         return
 
@@ -108,7 +159,7 @@ def main():
         return
 
     try:
-        raw_bytes = base64.b64decode(base64_data)
+        raw_bytes = base64.b64decode(normalised_base64)
     except Exception:
         json.dump({"text": ""}, sys.stdout)
         return
@@ -120,6 +171,12 @@ def main():
             text = extract_excel_text(raw_bytes)
     except Exception:
         text = ""
+
+    if not text.strip():
+        try:
+            text = extract_fallback_xml_text(raw_bytes)
+        except Exception:
+            text = ""
 
     json.dump({"text": text or ""}, sys.stdout)
 
