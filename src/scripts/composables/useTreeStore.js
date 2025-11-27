@@ -51,7 +51,6 @@ export function useTreeStore({
 
     async function loadTreeFromDB(projectId) {
         const flat = await fetchNodesByProject(projectId);
-        console.log(`[Tree] loaded flat nodes for ${projectId}:`, flat.length);
         return buildTreeFromFlat(flat);
     }
 
