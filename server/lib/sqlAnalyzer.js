@@ -1360,7 +1360,7 @@ function isMissingInterpreterError(error, stderr) {
         return true;
     }
     const message = [error.message, stderr].filter(Boolean).join("\n");
-    return /python was not found/i.test(message);
+    return /python was not found/gi.test(message);
 }
 
 function runPythonCandidate(candidate, sqlText) {
@@ -1435,7 +1435,7 @@ async function executeSqlAnalysis(sqlText) {
                 const errorMessage = `無法解析 SQL 分析器輸出：${trimmed}`;
                 const error = new Error(errorMessage);
                 error.stderr = trimmed;
-                if (/python was not found/i.test(trimmed)) {
+                if (/python was not found/gi.test(trimmed)) {
                     error.missingInterpreter = true;
                 }
                 throw error;
@@ -1492,7 +1492,7 @@ function extractJsonFromText(value) {
 
     const candidates = [];
 
-    const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/gi);
     if (fenceMatch && fenceMatch[1]) {
         candidates.push(fenceMatch[1].trim());
     }
