@@ -8,6 +8,7 @@ import {
     getAiReviewTemplate
 } from "./lib/aiReviewTemplates.js";
 import { getDifyConfigSummary, partitionContent, requestDifyReport } from "./lib/difyClient.js";
+import { extractSqlTextFromDocument } from "./lib/documentSqlExtractor.js";
 import { analyseSqlToReport, buildSqlReportPayload, isSqlPath } from "./lib/sqlAnalyzer.js";
 import { buildJavaSegments, isJavaPath } from "./lib/javaProcessor.js";
 
@@ -1294,6 +1295,25 @@ app.get("/api/projects/:projectId/reports", async (req, res, next) => {
             projectId,
             reports: rows.map(mapReportRow)
         });
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.post("/api/documents/sql-text", async (req, res, next) => {
+    try {
+        const { data, base64, name, mime } = req.body || {};
+        const payload = typeof data === "string" && data.trim() ? data.trim() : typeof base64 === "string" ? base64.trim() : "";
+        if (!payload) {
+            res.status(400).json({ message: "Missing document data (base64)" });
+            return;
+        }
+        const text = await extractSqlTextFromDocument({
+            base64: payload,
+            name: typeof name === "string" ? name : "",
+            mime: typeof mime === "string" ? mime : ""
+        });
+        res.json({ text: typeof text === "string" ? text : "" });
     } catch (error) {
         next(error);
     }

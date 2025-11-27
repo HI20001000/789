@@ -226,13 +226,17 @@ export function useAiAssistant({ treeStore, projectsStore, fileSystem, preview }
             mime = node.mime || file.type || "";
             name = node.name || file.name || node.path || `ctx-${ctxId + 1}`;
             size = file.size;
-            if (!preview.isTextLike(name, mime)) {
-                throw new Error("目前僅支援加入純文字類型檔案。");
+            if (!preview.isTextPreviewable(name, mime)) {
+                throw new Error("目前僅支援加入純文字或包含 SQL 的文件。");
             }
-            if (size > preview.MAX_TEXT_BYTES) {
-                throw new Error("檔案過大（> 1 MB），請先簡化後再試。");
+            if (size > preview.MAX_TEXT_BYTES * 2) {
+                throw new Error("檔案過大（> 2 MB），請先簡化後再試。");
             }
-            content = await file.text();
+            content = await preview.readTextContent(file, {
+                name,
+                mime,
+                maxBytes: preview.MAX_TEXT_BYTES * 2
+            });
         } catch (error) {
             if (error?.code !== "external-handle-missing") {
                 throw error;
@@ -243,13 +247,13 @@ export function useAiAssistant({ treeStore, projectsStore, fileSystem, preview }
             }
             mime = record.mime || node.mime || "text/plain";
             name = node.name || node.path || `ctx-${ctxId + 1}`;
-            if (!preview.isTextLike(name, mime)) {
-                throw new Error("目前僅支援加入純文字類型檔案。");
+            if (!preview.isTextPreviewable(name, mime)) {
+                throw new Error("目前僅支援加入純文字或包含 SQL 的文件。");
             }
             content = record.content;
             size = Number(record.size) || content.length;
-            if (size > preview.MAX_TEXT_BYTES) {
-                throw new Error("檔案過大（> 1 MB），請先簡化後再試。");
+            if (size > preview.MAX_TEXT_BYTES * 2) {
+                throw new Error("檔案過大（> 2 MB），請先簡化後再試。");
             }
         }
 

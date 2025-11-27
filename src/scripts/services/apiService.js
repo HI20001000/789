@@ -85,6 +85,10 @@ export async function saveAiReviewSetting(language, codeBlock) {
     return await request("/settings/ai-review", { method: "POST", body: { language, codeBlock } });
 }
 
+export async function extractSqlFromDocument(payload) {
+    return await request("/documents/sql-text", { method: "POST", body: payload });
+}
+
 const apiService = {
     fetchProjects,
     createOrUpdateProject,
@@ -97,7 +101,8 @@ const apiService = {
     fetchSettingRules,
     saveSettingRules,
     fetchAiReviewSetting,
-    saveAiReviewSetting
+    saveAiReviewSetting,
+    extractSqlFromDocument
 };
 
 export default apiService;
