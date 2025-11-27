@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { extractSqlTextFromFile, isSqlDocument } from "../utils/sqlDocuments.js";
+import { extractSqlTextFromFile, isOfficeDocument, isSqlDocument } from "../utils/sqlDocuments.js";
 
 const previewing = ref({
     name: "",
@@ -45,7 +45,7 @@ function isTextLike(name, mime) {
 }
 
 function isTextPreviewable(name, mime) {
-    return isTextLike(name, mime) || isSqlDocument(name, mime);
+    return isTextLike(name, mime) || isSqlDocument(name, mime) || isOfficeDocument(name, mime);
 }
 
 async function readTextContent(file, { name, mime, maxBytes = MAX_TEXT_BYTES } = {}) {
@@ -60,7 +60,8 @@ async function readTextContent(file, { name, mime, maxBytes = MAX_TEXT_BYTES } =
         return await file.text();
     }
 
-    if (!isSqlDocument(resolvedName, resolvedMime)) {
+    const isOffice = isOfficeDocument(resolvedName, resolvedMime);
+    if (!isSqlDocument(resolvedName, resolvedMime) && !isOffice) {
         throw new Error("目前僅支援純文字或包含 SQL 的文件預覽。");
     }
 
@@ -68,7 +69,14 @@ async function readTextContent(file, { name, mime, maxBytes = MAX_TEXT_BYTES } =
         throw new Error("檔案過大，請縮小檔案後再試或僅保留包含 SQL 的頁面。");
     }
 
-    return await extractSqlTextFromFile(file);
+    const sqlText = await extractSqlTextFromFile(file);
+    if (sqlText?.trim()) return sqlText;
+
+    if (!isOffice) {
+        throw new Error("無法擷取文件中的 SQL 內容。請確認檔案內容後再試。");
+    }
+
+    throw new Error("檔案不含可預覽的內容，請確認文件是否正確。");
 }
 
 export function usePreview() {
@@ -79,6 +87,7 @@ export function usePreview() {
         extOf,
         isTextLike,
         isSqlDocument,
+        isOfficeDocument,
         isTextPreviewable,
         readTextContent
     };
