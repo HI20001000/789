@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { extractSqlTextFromFile, isSqlDocument } from "../utils/sqlDocuments.js";
 
 const previewing = ref({
     name: "",
@@ -43,12 +44,42 @@ function isTextLike(name, mime) {
     return exts.includes(extOf(name));
 }
 
+function isTextPreviewable(name, mime) {
+    return isTextLike(name, mime) || isSqlDocument(name, mime);
+}
+
+async function readTextContent(file, { name, mime, maxBytes = MAX_TEXT_BYTES } = {}) {
+    const resolvedName = name || file?.name || "";
+    const resolvedMime = mime || file?.type || "";
+    if (!file) throw new Error("缺少檔案內容，無法讀取。");
+
+    if (isTextLike(resolvedName, resolvedMime)) {
+        if (file.size > maxBytes) {
+            throw new Error("檔案過大，無法載入完整內容預覽。");
+        }
+        return await file.text();
+    }
+
+    if (!isSqlDocument(resolvedName, resolvedMime)) {
+        throw new Error("目前僅支援純文字或包含 SQL 的文件預覽。");
+    }
+
+    if (file.size > maxBytes * 2) {
+        throw new Error("檔案過大，請縮小檔案後再試或僅保留包含 SQL 的頁面。");
+    }
+
+    return await extractSqlTextFromFile(file);
+}
+
 export function usePreview() {
     return {
         previewing,
         MAX_TEXT_BYTES,
         resetPreview,
         extOf,
-        isTextLike
+        isTextLike,
+        isSqlDocument,
+        isTextPreviewable,
+        readTextContent
     };
 }
