@@ -1228,7 +1228,13 @@ export function extractDmlStatements(sqlText) {
     // Always use a guaranteed-global, case-insensitive pattern to satisfy
     // String.prototype.matchAll requirements regardless of any upstream
     // mutation of STATEMENT_KEYWORD_SEARCH_PATTERN.flags.
-    const keywordPattern = ensureGlobalRegExp(STATEMENT_KEYWORD_SEARCH_PATTERN, "i");
+    // Build a fresh, guaranteed-global pattern. Some runtimes have shown the
+    // upstream constant's flags being mutated, so we defensively recreate the
+    // pattern if the helper doesn't yield a global regex.
+    let keywordPattern = ensureGlobalRegExp(STATEMENT_KEYWORD_SEARCH_PATTERN, "i");
+    if (!keywordPattern.global) {
+        keywordPattern = new RegExp(STATEMENT_KEYWORD_SEARCH_PATTERN.source, "gi");
+    }
 
     let offset = 0;
     while (offset < masked.length) {
