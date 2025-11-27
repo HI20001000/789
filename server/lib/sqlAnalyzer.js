@@ -1209,8 +1209,7 @@ const STATEMENT_KEYWORDS = [
     "LOAD"
 ];
 
-
-const STATEMENT_KEYWORD_PATTERN = new RegExp(`^(${STATEMENT_KEYWORDS.join("|")})\\b`, "i");
+const STATEMENT_KEYWORD_SEARCH_PATTERN = new RegExp(`\\b(${STATEMENT_KEYWORDS.join("|")})\\b`, "i");
 
 function extractDmlStatements(sqlText) {
     if (typeof sqlText !== "string" || !sqlText.trim()) {
@@ -1237,33 +1236,39 @@ function extractDmlStatements(sqlText) {
             continue;
         }
 
-        const snippet = sqlText.slice(start, end);
-        const cleanedSnippet = stripSqlComments(snippet).trim();
-        if (cleanedSnippet) {
-            const keywordMatch = cleanedSnippet.match(STATEMENT_KEYWORD_PATTERN);
-            if (keywordMatch) {
-                const startMeta = indexToLineCol(sqlText, start);
-                const endMeta = indexToLineCol(sqlText, end);
+        const keywordCandidate = masked.slice(start, end);
+        const keywordMatch = keywordCandidate.match(STATEMENT_KEYWORD_SEARCH_PATTERN);
+        let nextOffset = end;
+        if (keywordMatch && keywordMatch.index !== undefined) {
+            const keywordStart = start + keywordMatch.index;
+            const statementEnd = findStatementTerminator(masked, keywordStart);
+            const snippet = sqlText.slice(keywordStart, statementEnd);
+            const cleanedSnippet = stripSqlComments(snippet).trim();
+            if (cleanedSnippet) {
+                const startMeta = indexToLineCol(sqlText, keywordStart);
+                const endMeta = indexToLineCol(sqlText, statementEnd);
                 const startColumn = normalisePositiveInteger(startMeta.column) || 1;
                 const endColumn = normalisePositiveInteger(endMeta.column) || startColumn;
                 const startLine = normalisePositiveInteger(startMeta.line) || 1;
                 const endLine = normalisePositiveInteger(endMeta.line) || startLine;
+                const lineRange = startLine === endLine ? String(startLine) : `${startLine}-${endLine}`;
                 segments.push({
                     index: segments.length + 1,
                     text: cleanedSnippet,
                     rawText: snippet.trim(),
-                    start,
-                    end,
-                    line: startLine,
+                    start: keywordStart,
+                    end: statementEnd,
+                    line: lineRange,
                     startLine,
                     startColumn,
                     endLine,
                     endColumn
                 });
             }
+            nextOffset = statementEnd;
         }
 
-        offset = end;
+        offset = nextOffset;
     }
 
     return segments;
