@@ -5,14 +5,13 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SCRIPT_PATH = resolve(__dirname, "document_sql_extractor.py");
+const PYTHON_CANDIDATES = [process.env.PYTHON, process.env.PYTHON_BIN, "python3", "python"].filter(
+    Boolean
+);
 
-export async function extractSqlTextFromDocument({ base64, name = "", mime = "" }) {
-    if (!base64 || typeof base64 !== "string") {
-        return "";
-    }
-
+async function runExtractor(command, payload) {
     return await new Promise((resolve, reject) => {
-        const child = spawn("python3", [SCRIPT_PATH], { stdio: ["pipe", "pipe", "pipe"] });
+        const child = spawn(command, [SCRIPT_PATH], { stdio: ["pipe", "pipe", "pipe"] });
         let stdout = "";
         let stderr = "";
 
@@ -36,8 +35,35 @@ export async function extractSqlTextFromDocument({ base64, name = "", mime = "" 
             }
         });
 
-        child.stdin.write(JSON.stringify({ base64, name, mime }));
+        child.stdin.write(JSON.stringify(payload));
         child.stdin.end();
     });
+}
+
+export async function extractSqlTextFromDocument({ base64, name = "", mime = "" }) {
+    if (!base64 || typeof base64 !== "string") {
+        return "";
+    }
+
+    const attempts = PYTHON_CANDIDATES.length ? PYTHON_CANDIDATES : ["python3", "python"];
+    let lastError;
+
+    for (const command of attempts) {
+        try {
+            return await runExtractor(command, { base64, name, mime });
+        } catch (error) {
+            lastError = error;
+            if (error?.code !== "ENOENT") {
+                break;
+            }
+        }
+    }
+
+    const message =
+        "Document SQL extraction requires Python (python3 or python) to be installed on the server." +
+        (lastError?.message ? ` Last error: ${lastError.message}` : "");
+    const error = new Error(message);
+    error.code = lastError?.code || "PYTHON_NOT_FOUND";
+    throw error;
 }
 
