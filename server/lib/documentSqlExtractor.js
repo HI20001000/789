@@ -1,4 +1,5 @@
 import { inflateRawSync } from "node:zlib";
+import { extractDmlStatements } from "./sqlAnalyzer.js";
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
@@ -166,10 +167,15 @@ export async function extractSqlTextFromDocument({ base64, name = "", mime = "" 
     }
 
     try {
-        if (kind === WORD_KIND) {
-            return await extractWordText(buffer, entries);
+        const rawText = kind === WORD_KIND ? await extractWordText(buffer, entries) : await extractExcelText(buffer, entries);
+        const segments = extractDmlStatements(rawText);
+        if (segments.length) {
+            return segments
+                .map((segment) => (typeof segment?.text === "string" ? segment.text.trim() : ""))
+                .filter(Boolean)
+                .join("\n\n");
         }
-        return await extractExcelText(buffer, entries);
+        return rawText?.trim?.() || "";
     } catch (error) {
         return "";
     }

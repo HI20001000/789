@@ -1173,14 +1173,14 @@ function stripSqlComments(sqlText) {
 
 function findStatementTerminator(maskedSql, startIndex) {
     if (!maskedSql || startIndex >= maskedSql.length) {
-        return maskedSql ? maskedSql.length : 0;
+        return { end: maskedSql ? maskedSql.length : 0, found: false };
     }
     for (let index = startIndex; index < maskedSql.length; index += 1) {
-        if (maskedSql[index] === ";") {
-            return index + 1;
+        if (maskedSql[index] === ";" || maskedSql[index] === "；") {
+            return { end: index + 1, found: true };
         }
     }
-    return maskedSql.length;
+    return { end: maskedSql.length, found: false };
 }
 
 function indexToLineCol(text, index) {
@@ -1211,7 +1211,7 @@ const STATEMENT_KEYWORDS = [
 
 const STATEMENT_KEYWORD_SEARCH_PATTERN = new RegExp(`\\b(${STATEMENT_KEYWORDS.join("|")})\\b`, "i");
 
-function extractDmlStatements(sqlText) {
+export function extractDmlStatements(sqlText) {
     if (typeof sqlText !== "string" || !sqlText.trim()) {
         return [];
     }
@@ -1230,18 +1230,23 @@ function extractDmlStatements(sqlText) {
             break;
         }
 
-        const end = findStatementTerminator(masked, start);
+        const { end, found: hasTerminatorInSlice } = findStatementTerminator(masked, start);
         if (end <= start) {
             offset = start + 1;
             continue;
         }
 
         const keywordCandidate = masked.slice(start, end);
-        const keywordMatch = keywordCandidate.match(STATEMENT_KEYWORD_SEARCH_PATTERN);
+        const keywordMatches = Array.from(keywordCandidate.matchAll(STATEMENT_KEYWORD_SEARCH_PATTERN));
+        const keywordMatch = keywordMatches.length ? keywordMatches[keywordMatches.length - 1] : null;
         let nextOffset = end;
         if (keywordMatch && keywordMatch.index !== undefined) {
             const keywordStart = start + keywordMatch.index;
-            const statementEnd = findStatementTerminator(masked, keywordStart);
+            const { end: statementEnd, found: hasTerminator } = findStatementTerminator(masked, keywordStart);
+            if (!hasTerminator) {
+                offset = end;
+                continue;
+            }
             const snippet = sqlText.slice(keywordStart, statementEnd);
             const cleanedSnippet = stripSqlComments(snippet).trim();
             if (cleanedSnippet) {
@@ -1266,6 +1271,8 @@ function extractDmlStatements(sqlText) {
                 });
             }
             nextOffset = statementEnd;
+        } else if (!hasTerminatorInSlice) {
+            nextOffset = end;
         }
 
         offset = nextOffset;
