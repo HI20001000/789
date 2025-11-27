@@ -93,23 +93,24 @@ async function extractExcelText(zip) {
         (entry) => entry.name === "xl/sharedStrings.xml" || (entry.name?.startsWith("xl/worksheets/") && entry.name.endsWith(".xml"))
     );
 
-    for (const entry of targets) {
-        const xml = await entry.async("string");
-        const flattened = stripXmlTags(xml);
-        if (flattened) rows.push(flattened);
-    }
+        child.stdout.on("data", (chunk) => {
+            stdout += chunk.toString();
+        });
 
-    return rows.join("\n");
-}
+        child.on("error", () => resolve(""));
+        child.on("close", () => {
+            try {
+                const parsed = JSON.parse(stdout || "{}");
+                resolve(typeof parsed?.text === "string" ? parsed.text : "");
+            } catch (error) {
+                resolve("");
+            }
+        });
 
-async function extractFallbackXmlText(zip) {
-    const rows = [];
-    for (const entry of normaliseEntries(zip)) {
-        if (!entry.name?.toLowerCase().endsWith(".xml")) continue;
-        const flattened = stripXmlTags(await entry.async("string"));
-        if (flattened) rows.push(flattened);
-    }
-    return rows.join("\n");
+        const payload = { base64, data: base64, name, mime };
+        child.stdin.write(JSON.stringify(payload));
+        child.stdin.end();
+    });
 }
 
 export async function extractSqlTextFromDocument({ base64, name = "", mime = "" }) {
