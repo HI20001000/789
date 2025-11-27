@@ -144,6 +144,18 @@ async function extractExcelText(buffer, entries) {
     return rows.join("\n");
 }
 
+async function extractFallbackXmlText(buffer, entries) {
+    const rows = [];
+    for (const entry of entries) {
+        if (!entry.name.toLowerCase().endsWith(".xml")) continue;
+        const content = extractEntry(buffer, entry);
+        if (!content) continue;
+        const flattened = stripXmlTags(content.toString("utf8"));
+        if (flattened) rows.push(flattened);
+    }
+    return rows.join("\n");
+}
+
 export async function extractSqlTextFromDocument({ base64, name = "", mime = "" }) {
     if (!base64 || typeof base64 !== "string") {
         return "";
@@ -167,13 +179,16 @@ export async function extractSqlTextFromDocument({ base64, name = "", mime = "" 
     }
 
     try {
-        const rawText = kind === WORD_KIND ? await extractWordText(buffer, entries) : await extractExcelText(buffer, entries);
+        const primaryText =
+            kind === WORD_KIND ? await extractWordText(buffer, entries) : await extractExcelText(buffer, entries);
+        const rawText = (primaryText && primaryText.trim()) ? primaryText : await extractFallbackXmlText(buffer, entries);
         const segments = extractDmlStatements(rawText);
-        if (segments.length) {
-            return segments
-                .map((segment) => (typeof segment?.text === "string" ? segment.text.trim() : ""))
-                .filter(Boolean)
-                .join("\n\n");
+        const dmlText = segments
+            .map((segment) => (typeof segment?.text === "string" ? segment.text.trim() : ""))
+            .filter(Boolean)
+            .join("\n\n");
+        if (dmlText) {
+            return dmlText;
         }
         return rawText?.trim?.() || "";
     } catch (error) {

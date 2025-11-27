@@ -1281,6 +1281,26 @@ export function extractDmlStatements(sqlText) {
     return segments;
 }
 
+function isDocumentSqlPath(filePath = "") {
+    const lower = filePath.toLowerCase();
+    return [".doc", ".docx", ".xls", ".xlsx"].some((ext) => lower.endsWith(ext));
+}
+
+function prepareSqlTextForAnalysis(sqlText, filePath = "") {
+    const sourceText = typeof sqlText === "string" ? sqlText : "";
+    const dmlSegments = extractDmlStatements(sourceText);
+    if (!isDocumentSqlPath(filePath)) {
+        return { sqlText: sourceText, dmlSegments };
+    }
+
+    const joined = dmlSegments
+        .map((segment) => (typeof segment?.text === "string" ? segment.text.trim() : ""))
+        .filter(Boolean)
+        .join("\n\n");
+
+    return { sqlText: joined || sourceText, dmlSegments };
+}
+
 function parseCommand(command) {
     if (!command || typeof command !== "string") {
         return null;
@@ -1867,10 +1887,12 @@ function buildCompositeSummary(staticSummary, dmlSummary, difySummary, issues) {
 }
 
 export async function analyseSqlToReport(sqlText, options = {}) {
-    const analysis = await executeSqlAnalysis(sqlText);
+    const { path: sourceFilePath = "" } = options || {};
+    const { sqlText: preparedSqlText, dmlSegments } = prepareSqlTextForAnalysis(sqlText, sourceFilePath);
+
+    const analysis = await executeSqlAnalysis(preparedSqlText);
     const rawReport = typeof analysis?.result === "string" ? analysis.result : "";
     const trimmedReport = rawReport.trim();
-    const dmlSegments = extractDmlStatements(sqlText);
 
     if (!trimmedReport) {
         return {
