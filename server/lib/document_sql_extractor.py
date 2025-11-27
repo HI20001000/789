@@ -92,13 +92,25 @@ def extract_excel_text(buff: bytes):
         return "\n".join(rows)
 
 
+def _normalise_base64_payload(text: str) -> str:
+    if not text:
+        return ""
+    trimmed = text.strip()
+    if not trimmed.startswith("data:"):
+        return trimmed
+    comma = trimmed.find(",")
+    return trimmed if comma == -1 else trimmed[comma + 1 :]
+
+
 def main():
     payload = _safe_load_json(sys.stdin.read())
     base64_data = payload.get("base64") or payload.get("data") or ""
     name = payload.get("name") or ""
     mime = payload.get("mime") or ""
 
-    if not base64_data:
+    normalised_base64 = _normalise_base64_payload(base64_data)
+
+    if not normalised_base64:
         json.dump({"text": ""}, sys.stdout)
         return
 
@@ -108,7 +120,7 @@ def main():
         return
 
     try:
-        raw_bytes = base64.b64decode(base64_data)
+        raw_bytes = base64.b64decode(normalised_base64)
     except Exception:
         json.dump({"text": ""}, sys.stdout)
         return

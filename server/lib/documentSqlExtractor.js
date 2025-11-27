@@ -9,6 +9,16 @@ const PY_EXTRACTOR = join(__dirname, "document_sql_extractor.py");
 const WORD_KIND = "word";
 const EXCEL_KIND = "excel";
 
+function normaliseBase64Payload(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("data:")) {
+        const comma = trimmed.indexOf(",");
+        return comma === -1 ? trimmed : trimmed.slice(comma + 1);
+    }
+    return trimmed;
+}
+
 async function extractRawTextWithPython({ base64, name = "", mime = "" }) {
     return await new Promise((resolve) => {
         const child = spawn("python3", [PY_EXTRACTOR], { stdio: ["pipe", "pipe", "inherit"] });
@@ -108,6 +118,9 @@ export async function extractSqlTextFromDocument({ base64, name = "", mime = "" 
         return "";
     }
 
+    const normalisedBase64 = normaliseBase64Payload(base64);
+    if (!normalisedBase64) return "";
+
     const kind = detectDocumentKind(name, mime);
     if (!kind) {
         return "";
@@ -115,14 +128,14 @@ export async function extractSqlTextFromDocument({ base64, name = "", mime = "" 
 
     let rawText = "";
     try {
-        rawText = await extractRawTextWithPython({ base64, name, mime });
+        rawText = await extractRawTextWithPython({ base64: normalisedBase64, name, mime });
     } catch (error) {
         rawText = "";
     }
 
     if (!rawText) {
         try {
-            const buffer = Buffer.from(base64, "base64");
+            const buffer = Buffer.from(normalisedBase64, "base64");
             const zip = await JSZip.loadAsync(buffer);
             const primaryText = kind === WORD_KIND ? await extractWordText(zip) : await extractExcelText(zip);
             rawText = (primaryText && primaryText.trim()) ? primaryText : await extractFallbackXmlText(zip);
