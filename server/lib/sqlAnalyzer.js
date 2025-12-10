@@ -1860,6 +1860,7 @@ export function buildSqlReportPayload({
     dmlError
 }) {
 
+    const includeStatic = false;
     const rawReport = typeof analysis?.result === "string" ? analysis.result : "";
 
     const difyReport = typeof dify?.report === "string" && dify.report.trim().length ? dify.report : rawReport;
@@ -1869,7 +1870,7 @@ export function buildSqlReportPayload({
         : [rawReport || content || ""];
     logSqlPayloadStage("segments.normalised", segments);
 
-    const parsedDify = parseStaticReport(difyReport);
+    const parsedDify = includeStatic ? parseStaticReport(difyReport) : null;
     logSqlPayloadStage("dify.parsedReport", parsedDify);
     const parsedDifyReport = parsedDify && typeof parsedDify === "object" ? parsedDify : null;
 
@@ -2062,10 +2063,12 @@ export function buildSqlReportPayload({
     };
 
     const finalReports = {
-        static_analyzer: staticReportEntry,
         dml_prompt: dmlReportEntry,
         combined: combinedReportEntry
     };
+    if (staticReportEntry) {
+        finalReports.static_analyzer = staticReportEntry;
+    }
 
     const finalPayload = {
         summary: cloneValue(compositeSummary),
