@@ -1,15 +1,10 @@
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { getDifyConfigSummary, requestDifyReport } from "./difyClient.js";
 
 if (typeof globalThis !== "undefined" && typeof globalThis.logSqlPayloadStage !== "function") {
     globalThis.logSqlPayloadStage = () => {};
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const SCRIPT_PATH = resolve(__dirname, "sql_rule_engine.py");
+const EMPTY_ISSUES_JSON = JSON.stringify({ issues: [] }, null, 2);
 
 function logIssuesJson(label, jsonString) {
     if (typeof console === "undefined" || typeof console.log !== "function") {
@@ -1318,158 +1313,6 @@ function prepareSqlTextForAnalysis(sqlText, filePath = "") {
     return { sqlText: joined || sourceText, dmlSegments };
 }
 
-function parseCommand(command) {
-    if (!command || typeof command !== "string") {
-        return null;
-    }
-    const parts = command.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) {
-        return null;
-    }
-    return { command: parts[0], args: parts.slice(1) };
-}
-
-function gatherPythonCandidates() {
-    const envCandidates = [
-        process.env.SQL_ANALYZER_PYTHON,
-        process.env.PYTHON,
-        process.env.PYTHON_PATH,
-        process.env.PYTHON3_PATH
-    ]
-        .map(parseCommand)
-        .filter(Boolean);
-
-    const defaultCandidates = ["python3", "python", "py -3", "py"]
-        .map(parseCommand)
-        .filter(Boolean);
-
-    const seen = new Set();
-    const deduped = [];
-    for (const candidate of [...envCandidates, ...defaultCandidates]) {
-        const key = `${candidate.command} ${candidate.args.join(" ")}`.trim();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        deduped.push(candidate);
-    }
-    return deduped;
-}
-
-function isMissingInterpreterError(error, stderr) {
-    if (!error) return false;
-    if (error.code === "ENOENT") {
-        return true;
-    }
-    const message = [error.message, stderr].filter(Boolean).join("\n");
-    return /python was not found/gi.test(message);
-}
-
-function runPythonCandidate(candidate, sqlText) {
-    return new Promise((resolve, reject) => {
-        const args = [...candidate.args, "-u", SCRIPT_PATH];
-        const child = spawn(candidate.command, args, { stdio: ["pipe", "pipe", "pipe"] });
-
-        let stdout = "";
-        let stderr = "";
-        let stdinError = null;
-
-        child.stdout.setEncoding("utf8");
-        child.stdout.on("data", (chunk) => {
-            stdout += chunk;
-        });
-
-        child.stderr.setEncoding("utf8");
-        child.stderr.on("data", (chunk) => {
-            stderr += chunk;
-        });
-
-        child.stdin.on("error", (error) => {
-            stdinError = error;
-        });
-
-        child.on("error", (error) => {
-            const err = error;
-            err.stderr = stderr;
-            reject(err);
-        });
-
-        child.on("close", (code) => {
-            if (code !== 0) {
-                const error = new Error(`Python analyzer exited with code ${code}`);
-                error.stderr = stderr;
-                if (stdinError) {
-                    error.stdinError = stdinError;
-                }
-                reject(error);
-                return;
-            }
-            resolve({ stdout, stderr });
-        });
-
-        try {
-            child.stdin.end(sqlText ?? "");
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-let cachedInterpreter = null;
-
-async function executeSqlAnalysis(sqlText) {
-    const candidates = cachedInterpreter ? [cachedInterpreter] : gatherPythonCandidates();
-    let lastError = null;
-
-    for (const candidate of candidates) {
-        try {
-            const { stdout } = await runPythonCandidate(candidate, sqlText);
-            const trimmed = stdout.trim();
-            if (!trimmed) {
-                const emptyError = new Error("SQL 分析器未返回任何輸出");
-                emptyError.stderr = stdout;
-                throw emptyError;
-            }
-            let parsed;
-            try {
-                parsed = JSON.parse(trimmed);
-            } catch (parseError) {
-                const errorMessage = `無法解析 SQL 分析器輸出：${trimmed}`;
-                const error = new Error(errorMessage);
-                error.stderr = trimmed;
-                if (/python was not found/gi.test(trimmed)) {
-                    error.missingInterpreter = true;
-                }
-                throw error;
-            }
-            if (parsed.error) {
-                const engineError = new Error(parsed.error);
-                engineError.stderr = parsed.error;
-                throw engineError;
-            }
-            if (typeof parsed.result !== "string") {
-                const invalidError = new Error("SQL 分析器輸出缺少 result 欄位");
-                invalidError.stderr = JSON.stringify(parsed);
-                throw invalidError;
-            }
-            cachedInterpreter = candidate;
-            return parsed;
-        } catch (error) {
-            const stderr = error?.stderr || "";
-            if (error?.missingInterpreter || isMissingInterpreterError(error, stderr)) {
-                lastError = error;
-                cachedInterpreter = null;
-                continue;
-            }
-            throw error;
-        }
-    }
-
-    const hint =
-        "無法找到可用的 Python 執行檔。請在環境變數 SQL_ANALYZER_PYTHON 或 PYTHON_PATH 中指定完整的 python.exe 路徑，或確保 'python' 指令可用。";
-    const error = new Error(lastError?.message ? `${lastError.message}\n${hint}` : hint);
-    error.stderr = lastError?.stderr;
-    throw error;
-}
-
 function extractJsonFromText(value) {
     if (value == null) {
         return "";
@@ -1906,21 +1749,6 @@ function buildCompositeSummary(staticSummary, dmlSummary, difySummary, issues) {
 export async function analyseSqlToReport(sqlText, options = {}) {
     const { path: sourceFilePath = "" } = options || {};
     const { sqlText: preparedSqlText, dmlSegments } = prepareSqlTextForAnalysis(sqlText, sourceFilePath);
-
-    const analysis = await executeSqlAnalysis(preparedSqlText);
-    const rawReport = typeof analysis?.result === "string" ? analysis.result : "";
-    const trimmedReport = rawReport.trim();
-
-    if (!trimmedReport) {
-        return {
-            analysis,
-            dify: null,
-            difyError: null,
-            dml: { segments: dmlSegments, dify: null },
-            dmlError: null
-        };
-    }
-
     const {
         projectId = "",
         projectName = "",
@@ -1933,35 +1761,35 @@ export async function analyseSqlToReport(sqlText, options = {}) {
 
     const resolvedProjectName = projectName || projectId || "sql-report";
     const resolvedUserId = typeof userId === "string" && userId.trim() ? userId.trim() : undefined;
-    const analysisFilePath = path ? `${path}.analysis.json` : "analysis.json";
-    const staticSnapshot = buildStaticReportSnapshot(trimmedReport);
+    const analysis = null;
     const difyConfig = getDifyConfigSummary();
 
     let dmlPrompt = null;
     let dmlError = null;
+    const segmentsForDify = dmlSegments.map((segment) => {
+        const startLine = normalisePositiveInteger(segment.startLine ?? segment.line);
+        const endLine = normalisePositiveInteger(segment.endLine);
+        const startColumn = normalisePositiveInteger(segment.startColumn);
+        const endColumn = normalisePositiveInteger(segment.endColumn);
+        const text = typeof segment.text === "string"
+            ? segment.text
+            : typeof segment.rawText === "string"
+            ? segment.rawText
+            : "";
+        return {
+            text,
+            rawText: typeof segment.rawText === "string" ? segment.rawText : text,
+            index: segment.index,
+            startLine: startLine || undefined,
+            endLine: endLine || startLine || undefined,
+            startColumn: startColumn || undefined,
+            endColumn: endColumn || undefined,
+            line: startLine || undefined
+        };
+    });
+
     if (dmlSegments.length) {
         const segmentTexts = dmlSegments.map((segment) => segment.text);
-        const segmentsForDify = dmlSegments.map((segment) => {
-            const startLine = normalisePositiveInteger(segment.startLine ?? segment.line);
-            const endLine = normalisePositiveInteger(segment.endLine);
-            const startColumn = normalisePositiveInteger(segment.startColumn);
-            const endColumn = normalisePositiveInteger(segment.endColumn);
-            const text = typeof segment.text === "string"
-                ? segment.text
-                : typeof segment.rawText === "string"
-                ? segment.rawText
-                : "";
-            return {
-                text,
-                rawText: typeof segment.rawText === "string" ? segment.rawText : text,
-                index: segment.index,
-                startLine: startLine || undefined,
-                endLine: endLine || startLine || undefined,
-                startColumn: startColumn || undefined,
-                endColumn: endColumn || undefined,
-                line: startLine || undefined
-            };
-        });
         const dmlFilePath = path ? `${path}.dml.txt` : "analysis.dml.txt";
         try {
             console.log(
@@ -1991,82 +1819,33 @@ export async function analyseSqlToReport(sqlText, options = {}) {
     let dify = null;
     let difyError = null;
 
-    if (difyConfig.hasApiKey) {
-        const totalStaticIssues = Array.isArray(staticSnapshot.issues) ? staticSnapshot.issues.length : 0;
-        console.log(
-            `[sql+dify] Enriching static analysis issues project=${projectId || resolvedProjectName} path=${path || analysisFilePath} total=${totalStaticIssues}`
-        );
+    if (!difyConfig.hasApiKey) {
+        console.warn("[sql+dify] Dify API 未設定，AI SQL 分析補充將略過。");
+    } else {
+        const difyFilePath = path || "analysis.sql";
         try {
-            const enrichment = await enrichStaticIssuesWithDify(staticSnapshot.issues, {
-                projectId,
-                projectName,
-                path,
+            console.log(
+                `[sql+dify] Running SQL workflow project=${projectId || resolvedProjectName} path=${difyFilePath} segments=${segmentsForDify.length}`
+            );
+            dify = await requestDifyReport({
+                projectName: resolvedProjectName,
+                filePath: difyFilePath,
+                content: preparedSqlText,
                 userId: resolvedUserId,
+                segments: segmentsForDify.length ? segmentsForDify : undefined,
                 files,
+                language: "SQL",
                 loadAiReviewTemplate,
                 loadAiReviewRules
             });
-            if (enrichment) {
-                const enrichedIssues = cloneIssueListForPersistence(enrichment.issues);
-                let difyReportString = "";
-                try {
-                    difyReportString = JSON.stringify({ issues: enrichedIssues }, null, 2);
-                } catch (_error) {
-                    try {
-                        difyReportString = JSON.stringify({ issues: enrichedIssues });
-                    } catch (_nestedError) {
-                        difyReportString = "";
-                    }
-                }
-
-                const successfulCount = enrichedIssues.length - enrichment.errors.length;
-                console.log(
-                    `[sql+dify] Issue enrichment completed project=${projectId || resolvedProjectName} path=${path || analysisFilePath} succeeded=${successfulCount}/${enrichedIssues.length}`
-                );
-
-                const segmentSnapshots = cloneSegmentListForPersistence(enrichment.segments);
-                const chunkSnapshots = cloneValue(enrichment.chunks);
-                const errorSnapshots = cloneValue(enrichment.errors);
-                const conversationId =
-                    typeof enrichment.conversationId === "string" && enrichment.conversationId.trim()
-                        ? enrichment.conversationId.trim()
-                        : "";
-
-                dify = normaliseDifyOutput(
-                    {
-                        report: difyReportString,
-                        issues: enrichedIssues,
-                        segments: segmentSnapshots,
-                        chunks: chunkSnapshots,
-                        conversationId: conversationId || undefined,
-                        generatedAt: new Date().toISOString(),
-                        enrichment: {
-                            totalIssues: totalStaticIssues,
-                            successfulIssues: successfulCount,
-                            failedIssues: errorSnapshots.length,
-                            errors: errorSnapshots,
-                            conversationId: conversationId || undefined
-                        }
-                    },
-                    difyReportString
-                );
-
-                if (enrichment.errors.length === enrichedIssues.length && enrichedIssues.length) {
-                    difyError = new Error("Dify enrichment failed for all static issues");
-                }
-            }
         } catch (error) {
+            difyError = error;
             const message = error?.message || String(error);
-            const locationLabel = path || analysisFilePath;
             console.warn(
-                `[sql+dify] Failed to enrich static issues project=${projectId || resolvedProjectName} path=${locationLabel} :: ${message}`,
+                `[sql+dify] Failed to analyse SQL project=${projectId || resolvedProjectName} path=${difyFilePath} :: ${message}`,
                 error
             );
-            difyError = error;
-            dify = null;
         }
-    } else {
-        console.warn("[sql+dify] Dify API 未設定，靜態分析問題將不進行補充建議。");
     }
 
     return { analysis, dify, difyError, dml: { segments: dmlSegments, dify: dmlPrompt }, dmlError };
@@ -2078,15 +1857,12 @@ export function buildSqlReportPayload({
     dify,
     difyError,
     dml,
-    dmlError,
-    staticIssueSegments
+    dmlError
 }) {
 
     const rawReport = typeof analysis?.result === "string" ? analysis.result : "";
 
-    const difyReport = typeof dify?.report === "string" && dify.report.trim().length
-        ? dify.report
-        : rawReport;
+    const difyReport = typeof dify?.report === "string" && dify.report.trim().length ? dify.report : rawReport;
 
     const segments = dify?.segments && Array.isArray(dify.segments) && dify.segments.length
         ? dify.segments
@@ -2106,47 +1882,10 @@ export function buildSqlReportPayload({
             ? dify.conversationId.trim()
             : "";
 
-    const fallbackReportForSnapshot =
-        parsedDifyReport || (difyIssuesSanitised.length ? { issues: difyIssuesSanitised } : null);
-
-    const staticSnapshot = buildStaticReportSnapshot(rawReport, {
-        fallbackReport: fallbackReportForSnapshot,
-        fallbackExtension: ".sql"
-    });
-    logSqlPayloadStage("static.parsedReport", staticSnapshot.parsed);
-
-    const staticSummary = cloneValue(staticSnapshot.summary);
-
-    const staticReportPayload = cloneValue(staticSnapshot.payload);
-    staticReportPayload.summary = cloneValue(staticSummary);
-    staticReportPayload.metadata = cloneValue(staticSnapshot.metadata);
-    if (difyConversationId) {
-        staticReportPayload.conversationId = difyConversationId;
-    }
-
-    const difyStaticIssues = difyIssuesSanitised;
-    const snapshotIssues = cloneIssueListForPersistence(staticSnapshot.issues);
-    const preferredStaticIssues = difyStaticIssues.length ? difyStaticIssues : snapshotIssues;
-
-    staticReportPayload.issues = cloneIssueListForPersistence(preferredStaticIssues);
-    const enrichmentIssues = buildIssuesOnlyEnrichment(parsedDifyReport, difyIssuesSanitised, {
-        segments: dify?.segments,
-        chunks: dify?.chunks,
-        errors: dify?.enrichment?.errors,
-        conversationId: difyConversationId
-    });
-    if (enrichmentIssues) {
-        staticReportPayload.enrichment = enrichmentIssues;
-    }
-    if (staticSnapshot.parsed && staticSnapshot.parsed !== staticSnapshot.final) {
-        staticReportPayload.original = cloneValue(staticSnapshot.parsed);
-    }
-    logSqlPayloadStage("static.reportPayload", staticReportPayload);
-
-    const staticIssuesForPersistence = cloneIssueListForPersistence(preferredStaticIssues);
-    const staticIssuesWithSource = staticIssuesForPersistence.map((issue) =>
-        annotateIssueSource(issue, "static_analyzer")
-    );
+    const staticSummary = null;
+    const staticReportPayload = null;
+    const staticIssuesForPersistence = [];
+    const staticIssuesWithSource = [];
 
     const dmlSegments = Array.isArray(dml?.segments)
         ? dml.segments.map((segment, index) => {
@@ -2229,11 +1968,11 @@ export function buildSqlReportPayload({
     let finalReport = difyReport && difyReport.trim() ? difyReport : rawReport;
 
     const difyIssuesRaw = difyIssuesSanitised;
+    const reportsDifyIssues = cloneIssueListForPersistence(difyIssuesRaw);
     const difyIssuesWithSource = difyIssuesRaw.map((issue) => annotateIssueSource(issue, "dify_workflow"));
     const combinedIssues = [...staticIssuesWithSource, ...difyIssuesWithSource, ...dmlIssuesWithSource];
-    const difySummary = parsedDifyReport
-        ? normaliseDifySummary(parsedDifyReport, difyIssuesRaw.length)
-        : null;
+    const difySummarySource = parsedDifyReport || dify?.aggregated || null;
+    const difySummary = normaliseDifySummary(difySummarySource, difyIssuesRaw.length);
     logSqlPayloadStage("dify.summary", difySummary);
     logSqlPayloadStage("issues.combined", combinedIssues);
 
@@ -2244,38 +1983,42 @@ export function buildSqlReportPayload({
     const reportsStaticIssues = cloneIssueListForPersistence(staticIssuesForPersistence);
     const reportsAiIssues = cloneIssueListForPersistence(aiIssuesForPersistence);
 
-    const staticIssuesJson = serialiseIssuesJson(reportsStaticIssues, {
-        segments: dify?.segments,
-        chunks: dify?.chunks,
-        errors: dify?.enrichment?.errors,
-        conversationId: difyConversationId
-    });
+    const staticIssuesJson = EMPTY_ISSUES_JSON;
     const aiIssuesJson = serialiseIssuesJson(reportsAiIssues);
 
     logIssuesJson("ai.issues.json.pre_aggregate", aiIssuesJson);
 
     const combinedIssuesForReports = dedupeIssueList([
         ...reportsStaticIssues,
-        ...reportsAiIssues
+        ...reportsAiIssues,
+        ...reportsDifyIssues
     ]);
 
     dmlReportPayload.issues = cloneIssueListForPersistence(aiIssuesForPersistence);
 
     const generatedAt = dify?.generatedAt || new Date().toISOString();
-    const combinedSummaryRecords = [
-        buildSummaryRecordForPersistence({
-            source: "static_analyzer",
-            label: "靜態分析器",
-            summary: staticSummary,
-            issues: reportsStaticIssues
-        }),
+    const combinedSummaryRecords = [];
+    if (difySummary) {
+        combinedSummaryRecords.push(
+            buildSummaryRecordForPersistence({
+                source: "dify_workflow",
+                label: "Dify 工作流",
+                summary: difySummary,
+                issues: reportsDifyIssues,
+                fallbackGeneratedAt: dify?.generatedAt || generatedAt
+            })
+        );
+    }
+    combinedSummaryRecords.push(
         buildSummaryRecordForPersistence({
             source: "dml_prompt",
             label: "AI審查",
             summary: dmlSummary,
             issues: reportsAiIssues,
             fallbackGeneratedAt: dmlGeneratedAt
-        }),
+        })
+    );
+    combinedSummaryRecords.push(
         buildSummaryRecordForPersistence({
             source: "combined",
             label: "聚合報告",
@@ -2288,7 +2031,7 @@ export function buildSqlReportPayload({
                 dify?.generatedAt ||
                 generatedAt
         })
-    ];
+    );
 
     const aggregatedReports = {
         summary: cloneSummaryRecordsForPersistence(combinedSummaryRecords),
@@ -2301,12 +2044,6 @@ export function buildSqlReportPayload({
     );
     logIssuesJson("combined.report.json.post_aggregate", combinedReportJson);
 
-    const staticReportEntry = cloneValue({
-        ...staticReportPayload,
-        type: "static_analyzer",
-        issues: reportsStaticIssues
-    });
-
     const dmlReportEntry = cloneValue({
         ...dmlReportPayload,
         issues: reportsAiIssues
@@ -2316,6 +2053,14 @@ export function buildSqlReportPayload({
         type: "combined",
         summary: cloneValue(compositeSummary),
         issues: cloneIssueListForPersistence(combinedIssuesForReports)
+    };
+
+    const staticReportEntry = {
+        type: "static_analyzer",
+        summary: null,
+        issues: [],
+        metadata: { analysis_source: "static_analyzer" },
+        report: staticIssuesJson
     };
 
     const finalReports = {
@@ -2332,7 +2077,6 @@ export function buildSqlReportPayload({
         metadata: {
             analysis_source: "composite",
             components: [
-                "static_analyzer",
                 dmlSegments.length ? "dml_prompt" : null,
                 difySummary ? "dify_workflow" : null
             ].filter(Boolean)
@@ -2344,7 +2088,7 @@ export function buildSqlReportPayload({
         finalPayload.reports.dify_workflow = {
             type: "dify_workflow",
             summary: cloneValue(difySummary),
-            issues: cloneIssueListForPersistence(difyIssuesRaw),
+            issues: cloneIssueListForPersistence(reportsDifyIssues),
             metadata: { analysis_source: "dify_workflow" },
             raw: parsedDify,
             report: difyReport
@@ -2352,7 +2096,7 @@ export function buildSqlReportPayload({
     } else if (difyIssuesRaw.length) {
         finalPayload.reports.dify_workflow = {
             type: "dify_workflow",
-            issues: cloneIssueListForPersistence(difyIssuesRaw),
+            issues: cloneIssueListForPersistence(reportsDifyIssues),
             metadata: { analysis_source: "dify_workflow" }
         };
     }
@@ -2367,7 +2111,7 @@ export function buildSqlReportPayload({
     logSqlPayloadStage("report.serialised", finalReport);
 
     const difyErrorMessage = difyError ? difyError.message || String(difyError) : "";
-    const enrichmentStatus = dify ? "succeeded" : "failed";
+    const enrichmentStatus = dify ? "succeeded" : "skipped";
 
     const originalResult = typeof analysis?.result === "string" ? analysis.result : rawReport;
     const analysisPayload =
@@ -2385,7 +2129,6 @@ export function buildSqlReportPayload({
         if (!analysisPayload.enrichmentStatus) {
             analysisPayload.enrichmentStatus = enrichmentStatus;
         }
-        analysisPayload.staticReport = staticReportPayload;
         analysisPayload.dmlReport = dmlReportPayload;
         analysisPayload.dmlSegments = dmlSegments;
         analysisPayload.dmlSummary = dmlSummary;
@@ -2402,7 +2145,7 @@ export function buildSqlReportPayload({
             analysisPayload.difySummary = difySummary;
         }
         if (!analysisPayload.difyIssues && difyIssuesRaw.length) {
-            analysisPayload.difyIssues = cloneIssueListForPersistence(difyIssuesRaw);
+            analysisPayload.difyIssues = cloneIssueListForPersistence(reportsDifyIssues);
         }
         if (dmlErrorMessage) {
             analysisPayload.dmlErrorMessage = dmlErrorMessage;
@@ -2421,7 +2164,7 @@ export function buildSqlReportPayload({
     }
     logSqlPayloadStage("analysis.payload", analysisPayload);
 
-    const sourceLabels = ["sql-rule-engine"];
+    const sourceLabels = [];
     if (dmlSegments.length) {
         sourceLabels.push(dmlPrompt ? "dml-dify" : "dml");
     }
