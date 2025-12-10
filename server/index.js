@@ -282,21 +282,37 @@ function mapAiReviewSettingRow(row) {
 
 function normaliseDocumentChecks(checks) {
     const base = Array.isArray(checks) ? checks : [];
-    const merged = new Map(DEFAULT_DOCUMENT_CHECKS.map((entry) => [entry.key, { ...entry }]));
+    const merged = new Map(DEFAULT_DOCUMENT_RULES.map((entry) => [entry.ruleId, { ...entry }]));
     for (const entry of base) {
         if (!entry || typeof entry !== "object") continue;
-        const key = typeof entry.key === "string" ? entry.key.trim() : "";
-        if (!key) continue;
-        const current = merged.get(key) || { key };
-        merged.set(key, {
+        const ruleIdRaw =
+            typeof entry.ruleId === "string" && entry.ruleId.trim()
+                ? entry.ruleId.trim()
+                : typeof entry.key === "string"
+                ? entry.key.trim()
+                : typeof entry.label === "string"
+                ? entry.label.trim()
+                : "";
+        if (!ruleIdRaw) continue;
+        const current = merged.get(ruleIdRaw) || { ruleId: ruleIdRaw };
+        merged.set(ruleIdRaw, {
             ...current,
-            label:
-                typeof entry.label === "string" && entry.label.trim()
-                    ? entry.label.trim()
-                    : current.label || key,
+            ruleId: ruleIdRaw,
+            key:
+                typeof entry.key === "string" && entry.key.trim()
+                    ? entry.key.trim()
+                    : current.key || ruleIdRaw,
             description:
-                typeof entry.description === "string" ? entry.description : current.description || "",
-            enabled: entry.enabled === undefined ? current.enabled !== false : Boolean(entry.enabled)
+                typeof entry.description === "string" && entry.description.trim()
+                    ? entry.description.trim()
+                    : current.description || "",
+            enabled: entry.enabled === undefined ? current.enabled !== false : Boolean(entry.enabled),
+            riskIndicator:
+                typeof entry.riskIndicator === "string" && entry.riskIndicator.trim()
+                    ? entry.riskIndicator.trim()
+                    : typeof entry.risk === "string" && entry.risk.trim()
+                    ? entry.risk.trim()
+                    : current.riskIndicator || ""
         });
     }
     return Array.from(merged.values());
@@ -356,7 +372,7 @@ async function loadDocumentReviewSetting() {
     }
     return {
         id: null,
-        checks: normaliseDocumentChecks(DEFAULT_DOCUMENT_CHECKS),
+        checks: normaliseDocumentChecks(DEFAULT_DOCUMENT_RULES),
         promptTemplate: DEFAULT_DOCUMENT_PROMPT_TEMPLATE,
         createdAt: null
     };
@@ -387,15 +403,17 @@ function buildDocumentStatusSnapshot(nodes, checks, sqlFilesMeta = []) {
     const fileNodes = (nodes || []).filter((node) => node?.type === "file");
 
     for (const check of enabledChecks) {
+        const ruleKey = check.key || check.ruleId;
         const entry = {
-            key: check.key,
-            label: check.label,
+            key: ruleKey,
+            ruleId: check.ruleId,
             description: check.description,
             enabled: check.enabled !== false,
+            riskIndicator: check.riskIndicator || "",
             matches: [],
             status: "unknown"
         };
-        switch (check.key) {
+        switch (ruleKey) {
             case "approval_form":
                 entry.matches = matchNodesByKeywords(fileNodes, ["演練與投產審批表", "審批表", "审批表"], {
                     extensions: [".doc", ".docx"]
@@ -465,39 +483,44 @@ const JAVA_FILE_EXTENSION = ".java";
 const JAVA_STATIC_SUMMARY_MESSAGE = "Java 檔案僅支援 AI 審查流程。";
 const DOCUMENT_REVIEW_PATH = "__documents__/ai-status.json";
 const DEFAULT_DOCUMENT_PROMPT_TEMPLATE =
-    "你是一位軟體交付與作業稽核專家，請根據以下的專案檔案樹及檢查清單，評估必備交付物是否齊全。\n" +
-    "請逐一檢查清單並輸出 JSON，至少包含 issues (每個問題需描述缺漏或風險與改善建議) 及 summary (總結風險與結論)。\n" +
+    "你是一位軟體交付與作業稽核專家，請根據以下的專案檔案樹及規則引擎清單，評估必備交付物是否齊全。\n" +
+    "請逐一檢查規則並輸出 JSON，至少包含 issues (每個問題需描述缺漏或風險與改善建議) 及 summary (總結風險與結論)。\n" +
     "回覆務必使用繁體中文，並以 JSON 物件表示，缺少的項目請列出問題與建議。\n" +
     "以下為專案資料：\n{{content}}";
-const DEFAULT_DOCUMENT_CHECKS = [
+const DEFAULT_DOCUMENT_RULES = [
     {
         key: "approval_form",
-        label: "演練與投產審批表",
+        ruleId: "DOC-001",
         description: "是否有提供《演練與投產審批表.docx》",
+        riskIndicator: "高",
         enabled: true
     },
     {
         key: "test_logs",
-        label: "測試日誌",
+        ruleId: "DOC-002",
         description: "是否提供測試日誌（log 文件）",
+        riskIndicator: "中",
         enabled: true
     },
     {
         key: "rollback_script",
-        label: "回退腳本",
+        ruleId: "DOC-003",
         description: "是否提供回退腳本（rollback 類文件）",
+        riskIndicator: "高",
         enabled: true
     },
     {
         key: "deployment_guide",
-        label: "投產指引",
+        ruleId: "DOC-004",
         description: "是否提供投產指引（guide 類文件）",
+        riskIndicator: "中",
         enabled: true
     },
     {
         key: "sql_utf8_nobom",
-        label: "SQL UTF-8 無 BOM",
+        ruleId: "DOC-005",
         description: "SQL 腳本是否為 UTF-8 無 BOM 格式",
+        riskIndicator: "中",
         enabled: true
     }
 ];
@@ -1767,7 +1790,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             "檔案樹：",
             treeMap || "(空)",
             "",
-            "檢查清單：",
+            "規則清單：",
             checksJson,
             "",
             "狀態摘要：",
