@@ -7101,8 +7101,8 @@ body,
 .codeLineNo {
     position: relative;
     flex: 0 0 auto;
-    width: 5ch;
-    min-width: 5ch;
+    width: 7ch;
+    min-width: 7ch;
     padding: 0 12px 0 0;
     text-align: right;
     color: #4b5563;
