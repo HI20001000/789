@@ -1335,7 +1335,7 @@ app.post("/api/reports/dify", async (req, res, next) => {
         resolvedUserId = typeof userId === "string" ? userId.trim() : "";
         if (isSqlPath(path)) {
             if (REPORT_DEBUG_LOGS) {
-                console.log(`[sql] Running static SQL analysis project=${projectId} path=${path}`);
+                console.log(`[sql] Generating SQL report project=${projectId} path=${path}`);
             }
             const aiReviewResolvers = buildAiReviewResolvers("SQL");
             let sqlAnalysis;
@@ -1350,7 +1350,7 @@ app.post("/api/reports/dify", async (req, res, next) => {
                 });
             } catch (error) {
                 console.error("[sql] Failed to analyse SQL", error);
-                res.status(502).json({ message: error?.message || "SQL 靜態分析失敗" });
+                res.status(502).json({ message: error?.message || "SQL 分析失敗" });
                 return;
             }
 
@@ -1361,7 +1361,8 @@ app.post("/api/reports/dify", async (req, res, next) => {
                 difyError: sqlAnalysis.difyError,
                 dml: sqlAnalysis.dml,
                 dmlError: sqlAnalysis.dmlError,
-                staticIssueSegments: sqlAnalysis.staticIssueSegments
+                staticIssueSegments: sqlAnalysis.staticIssueSegments,
+                skipStaticAnalysis: true
             });
             await upsertReport({
                 projectId,
@@ -1520,7 +1521,7 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
 
         if (isSqlPath(path)) {
             if (REPORT_DEBUG_LOGS) {
-                console.log(`[sql] Running static SQL analysis for snippet project=${projectId} path=${path}`);
+                console.log(`[sql] Generating SQL snippet report project=${projectId} path=${path}`);
             }
             const aiReviewResolvers = buildAiReviewResolvers("SQL");
             let sqlAnalysis;
@@ -1535,7 +1536,7 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
                 });
             } catch (error) {
                 console.error("[sql] Failed to analyse SQL snippet", error);
-                res.status(502).json({ message: error?.message || "SQL 靜態分析失敗" });
+                res.status(502).json({ message: error?.message || "SQL 分析失敗" });
                 return;
             }
             const reportPayload = buildSqlReportPayload({
@@ -1543,7 +1544,10 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
                 content: normalised.content,
                 dify: sqlAnalysis.dify,
                 difyError: sqlAnalysis.difyError,
-                staticIssueSegments: sqlAnalysis.staticIssueSegments
+                dml: sqlAnalysis.dml,
+                dmlError: sqlAnalysis.dmlError,
+                staticIssueSegments: sqlAnalysis.staticIssueSegments,
+                skipStaticAnalysis: true
             });
             res.json({
                 projectId,
