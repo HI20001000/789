@@ -5102,6 +5102,12 @@ onBeforeUnmount(() => {
                                 :aria-selected="activeSettingTab === 'documents'">
                                 文件審查
                             </button>
+                            <button type="button" class="settingsTab"
+                                :class="{ active: activeSettingTab === 'documents' }"
+                                @click="activeSettingTab = 'documents'" role="tab"
+                                :aria-selected="activeSettingTab === 'documents'">
+                                文件審查
+                            </button>
                         </div>
 
                         <div class="settingsContent">
@@ -5280,6 +5286,45 @@ onBeforeUnmount(() => {
                                                     :disabled="documentSettingState.loading || documentSettingState.saving">
                                                     刪除
                                                 </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
+                                    <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
+                                        class="aiReviewInput" rows="6"
+                                        placeholder="輸入要送給 Dify 的文件檢查提示" :disabled="documentSettingState.loading"></textarea>
+                                </div>
+                            </template>
+                            <template v-else-if="activeSettingTab === 'documents'">
+                                <div class="settingsCard">
+                                    <div class="settingsActions">
+                                        <p class="settingsStatus" v-if="documentSettingState.loading">設定載入中...</p>
+                                        <p class="settingsStatus success" v-else-if="documentSettingState.message">
+                                            {{ documentSettingState.message }}
+                                        </p>
+                                        <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
+                                            :disabled="documentSettingState.saving || documentSettingState.loading">
+                                            {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
+                                        </button>
+                                    </div>
+
+                                    <div class="documentChecks">
+                                        <h4 class="documentChecksTitle">檢查清單</h4>
+                                        <p class="documentChecksHint">
+                                            依需求調整是否啟用或修改描述，AI 會使用此清單檢查專案文件。
+                                        </p>
+                                        <div v-for="(check, index) in documentSettingState.checks"
+                                            :key="check.key || `doc-check-${index}`" class="documentCheckRow">
+                                            <label class="toggle">
+                                                <input v-model="check.enabled" type="checkbox" />
+                                                <span>啟用</span>
+                                            </label>
+                                            <div class="documentCheckFields">
+                                                <input v-model="check.label" type="text" class="ruleInput"
+                                                    :placeholder="`檢查項目 ${index + 1}`" />
+                                                <input v-model="check.description" type="text" class="ruleInput"
+                                                    :placeholder="`說明 ${index + 1}`" />
                                             </div>
                                         </div>
                                     </div>
@@ -7523,8 +7568,8 @@ body,
 .codeLineNo {
     position: relative;
     flex: 0 0 auto;
-    width: 5ch;
-    min-width: 5ch;
+    width: 7ch;
+    min-width: 7ch;
     padding: 0 12px 0 0;
     text-align: right;
     color: #4b5563;
