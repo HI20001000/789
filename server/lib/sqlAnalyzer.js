@@ -1924,29 +1924,30 @@ export async function analyseSqlToReport(sqlText, options = {}) {
 
     let dmlPrompt = null;
     let dmlError = null;
+    const segmentsForDify = dmlSegments.map((segment) => {
+        const startLine = normalisePositiveInteger(segment.startLine ?? segment.line);
+        const endLine = normalisePositiveInteger(segment.endLine);
+        const startColumn = normalisePositiveInteger(segment.startColumn);
+        const endColumn = normalisePositiveInteger(segment.endColumn);
+        const text = typeof segment.text === "string"
+            ? segment.text
+            : typeof segment.rawText === "string"
+            ? segment.rawText
+            : "";
+        return {
+            text,
+            rawText: typeof segment.rawText === "string" ? segment.rawText : text,
+            index: segment.index,
+            startLine: startLine || undefined,
+            endLine: endLine || startLine || undefined,
+            startColumn: startColumn || undefined,
+            endColumn: endColumn || undefined,
+            line: startLine || undefined
+        };
+    });
+
     if (dmlSegments.length) {
         const segmentTexts = dmlSegments.map((segment) => segment.text);
-        const segmentsForDify = dmlSegments.map((segment) => {
-            const startLine = normalisePositiveInteger(segment.startLine ?? segment.line);
-            const endLine = normalisePositiveInteger(segment.endLine);
-            const startColumn = normalisePositiveInteger(segment.startColumn);
-            const endColumn = normalisePositiveInteger(segment.endColumn);
-            const text = typeof segment.text === "string"
-                ? segment.text
-                : typeof segment.rawText === "string"
-                ? segment.rawText
-                : "";
-            return {
-                text,
-                rawText: typeof segment.rawText === "string" ? segment.rawText : text,
-                index: segment.index,
-                startLine: startLine || undefined,
-                endLine: endLine || startLine || undefined,
-                startColumn: startColumn || undefined,
-                endColumn: endColumn || undefined,
-                line: startLine || undefined
-            };
-        });
         const dmlFilePath = path ? `${path}.dml.txt` : "analysis.dml.txt";
         try {
             console.log(
@@ -1978,6 +1979,31 @@ export async function analyseSqlToReport(sqlText, options = {}) {
 
     if (!difyConfig.hasApiKey) {
         console.warn("[sql+dify] Dify API 未設定，AI SQL 分析補充將略過。");
+    } else {
+        const difyFilePath = path || "analysis.sql";
+        try {
+            console.log(
+                `[sql+dify] Running SQL workflow project=${projectId || resolvedProjectName} path=${difyFilePath} segments=${segmentsForDify.length}`
+            );
+            dify = await requestDifyReport({
+                projectName: resolvedProjectName,
+                filePath: difyFilePath,
+                content: preparedSqlText,
+                userId: resolvedUserId,
+                segments: segmentsForDify.length ? segmentsForDify : undefined,
+                files,
+                language: "SQL",
+                loadAiReviewTemplate,
+                loadAiReviewRules
+            });
+        } catch (error) {
+            difyError = error;
+            const message = error?.message || String(error);
+            console.warn(
+                `[sql+dify] Failed to analyse SQL project=${projectId || resolvedProjectName} path=${difyFilePath} :: ${message}`,
+                error
+            );
+        }
     }
 
     return { analysis, dify, difyError, dml: { segments: dmlSegments, dify: dmlPrompt }, dmlError };
@@ -1989,17 +2015,13 @@ export function buildSqlReportPayload({
     dify,
     difyError,
     dml,
-    dmlError,
-    staticIssueSegments,
-    skipStaticAnalysis = false
+    dmlError
 }) {
 
-    const includeStatic = !skipStaticAnalysis;
-    const rawReport = includeStatic && typeof analysis?.result === "string" ? analysis.result : "";
+    const includeStatic = false;
+    const rawReport = typeof analysis?.result === "string" ? analysis.result : "";
 
-    const difyReport = includeStatic && typeof dify?.report === "string" && dify.report.trim().length
-        ? dify.report
-        : rawReport;
+    const difyReport = typeof dify?.report === "string" && dify.report.trim().length ? dify.report : rawReport;
 
     const segments = dify?.segments && Array.isArray(dify.segments) && dify.segments.length
         ? dify.segments

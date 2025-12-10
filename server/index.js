@@ -1360,9 +1360,7 @@ app.post("/api/reports/dify", async (req, res, next) => {
                 dify: sqlAnalysis.dify,
                 difyError: sqlAnalysis.difyError,
                 dml: sqlAnalysis.dml,
-                dmlError: sqlAnalysis.dmlError,
-                staticIssueSegments: sqlAnalysis.staticIssueSegments,
-                skipStaticAnalysis: true
+                dmlError: sqlAnalysis.dmlError
             });
             await upsertReport({
                 projectId,
@@ -1545,9 +1543,7 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
                 dify: sqlAnalysis.dify,
                 difyError: sqlAnalysis.difyError,
                 dml: sqlAnalysis.dml,
-                dmlError: sqlAnalysis.dmlError,
-                staticIssueSegments: sqlAnalysis.staticIssueSegments,
-                skipStaticAnalysis: true
+                dmlError: sqlAnalysis.dmlError
             });
             res.json({
                 projectId,
