@@ -1887,12 +1887,6 @@ export function buildSqlReportPayload({
     const staticReportPayload = null;
     const staticIssuesForPersistence = [];
     const staticIssuesWithSource = [];
-    const staticReportEntry = {
-        type: "static_analyzer",
-        summary: null,
-        issues: [],
-        metadata: { analysis_source: "static_analyzer" }
-    };
 
     const dmlSegments = Array.isArray(dml?.segments)
         ? dml.segments.map((segment, index) => {
@@ -2060,6 +2054,14 @@ export function buildSqlReportPayload({
         type: "combined",
         summary: cloneValue(compositeSummary),
         issues: cloneIssueListForPersistence(combinedIssuesForReports)
+    };
+
+    const staticReportEntry = {
+        type: "static_analyzer",
+        summary: null,
+        issues: [],
+        metadata: { analysis_source: "static_analyzer" },
+        report: staticIssuesJson
     };
 
     const finalReports = {
