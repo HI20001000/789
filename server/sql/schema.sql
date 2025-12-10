@@ -88,3 +88,11 @@ CREATE TABLE IF NOT EXISTS setting_ai_review (
     INDEX idx_setting_ai_review_language (language)
 );
 
+-- Settings for document review checklist and prompts
+CREATE TABLE IF NOT EXISTS setting_document_review (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    checks_json LONGTEXT,
+    prompt_template LONGTEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
