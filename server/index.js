@@ -363,8 +363,8 @@ async function loadDocumentReviewSetting() {
 }
 
 function matchNodesByKeywords(nodes, keywords, { extensions = [] } = {}) {
-    const keyList = (keywords || []).map((word) => (typeof word === "string" ? word.toLowerCase() : "" ")).filter(Boolean);
-    const extList = (extensions || []).map((ext) => (typeof ext === "string" ? ext.toLowerCase() : "" )).filter(Boolean);
+    const keyList = (keywords || []).map((word) => (typeof word === "string" ? word.toLowerCase() : "")).filter(Boolean);
+    const extList = (extensions || []).map((ext) => (typeof ext === "string" ? ext.toLowerCase() : "")).filter(Boolean);
     const matches = [];
     for (const node of nodes || []) {
         if (!node || node.type !== "file") continue;
