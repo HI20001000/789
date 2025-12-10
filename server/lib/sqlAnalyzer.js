@@ -1,15 +1,9 @@
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { getDifyConfigSummary, requestDifyReport } from "./difyClient.js";
 
 if (typeof globalThis !== "undefined" && typeof globalThis.logSqlPayloadStage !== "function") {
     globalThis.logSqlPayloadStage = () => {};
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const SCRIPT_PATH = resolve(__dirname, "sql_rule_engine.py");
 const EMPTY_ISSUES_JSON = JSON.stringify({ issues: [] }, null, 2);
 
 function logIssuesJson(label, jsonString) {
@@ -1319,158 +1313,6 @@ function prepareSqlTextForAnalysis(sqlText, filePath = "") {
     return { sqlText: joined || sourceText, dmlSegments };
 }
 
-function parseCommand(command) {
-    if (!command || typeof command !== "string") {
-        return null;
-    }
-    const parts = command.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) {
-        return null;
-    }
-    return { command: parts[0], args: parts.slice(1) };
-}
-
-function gatherPythonCandidates() {
-    const envCandidates = [
-        process.env.SQL_ANALYZER_PYTHON,
-        process.env.PYTHON,
-        process.env.PYTHON_PATH,
-        process.env.PYTHON3_PATH
-    ]
-        .map(parseCommand)
-        .filter(Boolean);
-
-    const defaultCandidates = ["python3", "python", "py -3", "py"]
-        .map(parseCommand)
-        .filter(Boolean);
-
-    const seen = new Set();
-    const deduped = [];
-    for (const candidate of [...envCandidates, ...defaultCandidates]) {
-        const key = `${candidate.command} ${candidate.args.join(" ")}`.trim();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        deduped.push(candidate);
-    }
-    return deduped;
-}
-
-function isMissingInterpreterError(error, stderr) {
-    if (!error) return false;
-    if (error.code === "ENOENT") {
-        return true;
-    }
-    const message = [error.message, stderr].filter(Boolean).join("\n");
-    return /python was not found/gi.test(message);
-}
-
-function runPythonCandidate(candidate, sqlText) {
-    return new Promise((resolve, reject) => {
-        const args = [...candidate.args, "-u", SCRIPT_PATH];
-        const child = spawn(candidate.command, args, { stdio: ["pipe", "pipe", "pipe"] });
-
-        let stdout = "";
-        let stderr = "";
-        let stdinError = null;
-
-        child.stdout.setEncoding("utf8");
-        child.stdout.on("data", (chunk) => {
-            stdout += chunk;
-        });
-
-        child.stderr.setEncoding("utf8");
-        child.stderr.on("data", (chunk) => {
-            stderr += chunk;
-        });
-
-        child.stdin.on("error", (error) => {
-            stdinError = error;
-        });
-
-        child.on("error", (error) => {
-            const err = error;
-            err.stderr = stderr;
-            reject(err);
-        });
-
-        child.on("close", (code) => {
-            if (code !== 0) {
-                const error = new Error(`Python analyzer exited with code ${code}`);
-                error.stderr = stderr;
-                if (stdinError) {
-                    error.stdinError = stdinError;
-                }
-                reject(error);
-                return;
-            }
-            resolve({ stdout, stderr });
-        });
-
-        try {
-            child.stdin.end(sqlText ?? "");
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-let cachedInterpreter = null;
-
-async function executeSqlAnalysis(sqlText) {
-    const candidates = cachedInterpreter ? [cachedInterpreter] : gatherPythonCandidates();
-    let lastError = null;
-
-    for (const candidate of candidates) {
-        try {
-            const { stdout } = await runPythonCandidate(candidate, sqlText);
-            const trimmed = stdout.trim();
-            if (!trimmed) {
-                const emptyError = new Error("SQL 分析器未返回任何輸出");
-                emptyError.stderr = stdout;
-                throw emptyError;
-            }
-            let parsed;
-            try {
-                parsed = JSON.parse(trimmed);
-            } catch (parseError) {
-                const errorMessage = `無法解析 SQL 分析器輸出：${trimmed}`;
-                const error = new Error(errorMessage);
-                error.stderr = trimmed;
-                if (/python was not found/gi.test(trimmed)) {
-                    error.missingInterpreter = true;
-                }
-                throw error;
-            }
-            if (parsed.error) {
-                const engineError = new Error(parsed.error);
-                engineError.stderr = parsed.error;
-                throw engineError;
-            }
-            if (typeof parsed.result !== "string") {
-                const invalidError = new Error("SQL 分析器輸出缺少 result 欄位");
-                invalidError.stderr = JSON.stringify(parsed);
-                throw invalidError;
-            }
-            cachedInterpreter = candidate;
-            return parsed;
-        } catch (error) {
-            const stderr = error?.stderr || "";
-            if (error?.missingInterpreter || isMissingInterpreterError(error, stderr)) {
-                lastError = error;
-                cachedInterpreter = null;
-                continue;
-            }
-            throw error;
-        }
-    }
-
-    const hint =
-        "無法找到可用的 Python 執行檔。請在環境變數 SQL_ANALYZER_PYTHON 或 PYTHON_PATH 中指定完整的 python.exe 路徑，或確保 'python' 指令可用。";
-    const error = new Error(lastError?.message ? `${lastError.message}\n${hint}` : hint);
-    error.stderr = lastError?.stderr;
-    throw error;
-}
-
 function extractJsonFromText(value) {
     if (value == null) {
         return "";
@@ -2041,54 +1883,10 @@ export function buildSqlReportPayload({
             ? dify.conversationId.trim()
             : "";
 
-    const fallbackReportForSnapshot = includeStatic
-        ? parsedDifyReport || (difyIssuesSanitised.length ? { issues: difyIssuesSanitised } : null)
-        : null;
-
-    const staticSnapshot = includeStatic
-        ? buildStaticReportSnapshot(rawReport, {
-              fallbackReport: fallbackReportForSnapshot,
-              fallbackExtension: ".sql"
-          })
-        : { summary: null, issues: [], metadata: {}, payload: null, parsed: null, final: null, serialised: "" };
-    logSqlPayloadStage("static.parsedReport", staticSnapshot.parsed);
-
-    const staticSummary = staticSnapshot.summary ? cloneValue(staticSnapshot.summary) : null;
-
-    let staticReportPayload = staticSnapshot.payload ? cloneValue(staticSnapshot.payload) : null;
-    if (staticReportPayload) {
-        staticReportPayload.summary = cloneValue(staticSummary);
-        staticReportPayload.metadata = cloneValue(staticSnapshot.metadata);
-        if (difyConversationId) {
-            staticReportPayload.conversationId = difyConversationId;
-        }
-    }
-
-    const difyStaticIssues = difyIssuesSanitised;
-    const snapshotIssues = cloneIssueListForPersistence(staticSnapshot.issues);
-    const preferredStaticIssues = difyStaticIssues.length ? difyStaticIssues : snapshotIssues;
-
-    if (staticReportPayload) {
-        staticReportPayload.issues = cloneIssueListForPersistence(preferredStaticIssues);
-        const enrichmentIssues = buildIssuesOnlyEnrichment(parsedDifyReport, difyIssuesSanitised, {
-            segments: dify?.segments,
-            chunks: dify?.chunks,
-            errors: dify?.enrichment?.errors,
-            conversationId: difyConversationId
-        });
-        if (enrichmentIssues) {
-            staticReportPayload.enrichment = enrichmentIssues;
-        }
-        if (staticSnapshot.parsed && staticSnapshot.parsed !== staticSnapshot.final) {
-            staticReportPayload.original = cloneValue(staticSnapshot.parsed);
-        }
-    }
-    logSqlPayloadStage("static.reportPayload", staticReportPayload);
-
-    const staticIssuesForPersistence = staticReportPayload
-        ? cloneIssueListForPersistence(preferredStaticIssues)
-        : [];
-    const staticIssuesWithSource = staticIssuesForPersistence.map((issue) => annotateIssueSource(issue, "static_analyzer"));
+    const staticSummary = null;
+    const staticReportPayload = null;
+    const staticIssuesForPersistence = [];
+    const staticIssuesWithSource = [];
 
     const dmlSegments = Array.isArray(dml?.segments)
         ? dml.segments.map((segment, index) => {
@@ -2186,14 +1984,7 @@ export function buildSqlReportPayload({
     const reportsStaticIssues = cloneIssueListForPersistence(staticIssuesForPersistence);
     const reportsAiIssues = cloneIssueListForPersistence(aiIssuesForPersistence);
 
-    const staticIssuesJson = includeStatic
-        ? serialiseIssuesJson(reportsStaticIssues, {
-              segments: dify?.segments,
-              chunks: dify?.chunks,
-              errors: dify?.enrichment?.errors,
-              conversationId: difyConversationId
-          })
-        : EMPTY_ISSUES_JSON;
+    const staticIssuesJson = EMPTY_ISSUES_JSON;
     const aiIssuesJson = serialiseIssuesJson(reportsAiIssues);
 
     logIssuesJson("ai.issues.json.pre_aggregate", aiIssuesJson);
@@ -2208,16 +1999,6 @@ export function buildSqlReportPayload({
 
     const generatedAt = dify?.generatedAt || new Date().toISOString();
     const combinedSummaryRecords = [];
-    if (staticReportPayload) {
-        combinedSummaryRecords.push(
-            buildSummaryRecordForPersistence({
-                source: "static_analyzer",
-                label: "靜態分析器",
-                summary: staticSummary,
-                issues: reportsStaticIssues
-            })
-        );
-    }
     if (difySummary) {
         combinedSummaryRecords.push(
             buildSummaryRecordForPersistence({
@@ -2264,14 +2045,6 @@ export function buildSqlReportPayload({
     );
     logIssuesJson("combined.report.json.post_aggregate", combinedReportJson);
 
-    const staticReportEntry = staticReportPayload
-        ? cloneValue({
-              ...staticReportPayload,
-              type: "static_analyzer",
-              issues: reportsStaticIssues
-          })
-        : null;
-
     const dmlReportEntry = cloneValue({
         ...dmlReportPayload,
         issues: reportsAiIssues
@@ -2299,7 +2072,6 @@ export function buildSqlReportPayload({
         metadata: {
             analysis_source: "composite",
             components: [
-                staticReportEntry ? "static_analyzer" : null,
                 dmlSegments.length ? "dml_prompt" : null,
                 difySummary ? "dify_workflow" : null
             ].filter(Boolean)
@@ -2334,7 +2106,7 @@ export function buildSqlReportPayload({
     logSqlPayloadStage("report.serialised", finalReport);
 
     const difyErrorMessage = difyError ? difyError.message || String(difyError) : "";
-    const enrichmentStatus = dify ? "succeeded" : includeStatic ? "failed" : "skipped";
+    const enrichmentStatus = dify ? "succeeded" : "skipped";
 
     const originalResult = typeof analysis?.result === "string" ? analysis.result : rawReport;
     const analysisPayload =
@@ -2351,9 +2123,6 @@ export function buildSqlReportPayload({
         analysisPayload.enriched = Boolean(dify);
         if (!analysisPayload.enrichmentStatus) {
             analysisPayload.enrichmentStatus = enrichmentStatus;
-        }
-        if (staticReportPayload) {
-            analysisPayload.staticReport = staticReportPayload;
         }
         analysisPayload.dmlReport = dmlReportPayload;
         analysisPayload.dmlSegments = dmlSegments;
@@ -2391,9 +2160,6 @@ export function buildSqlReportPayload({
     logSqlPayloadStage("analysis.payload", analysisPayload);
 
     const sourceLabels = [];
-    if (includeStatic) {
-        sourceLabels.push("sql-rule-engine");
-    }
     if (dmlSegments.length) {
         sourceLabels.push(dmlPrompt ? "dml-dify" : "dml");
     }
