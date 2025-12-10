@@ -5,11 +5,17 @@ import { useTreeStore } from "../scripts/composables/useTreeStore.js";
 import { useProjectsStore } from "../scripts/composables/useProjectsStore.js";
 import { useAiAssistant } from "../scripts/composables/useAiAssistant.js";
 import * as fileSystemService from "../scripts/services/fileSystemService.js";
-import { generateReportViaDify, fetchProjectReports } from "../scripts/services/reportService.js";
+import {
+    generateReportViaDify,
+    generateDocumentReviewReport,
+    fetchProjectReports
+} from "../scripts/services/reportService.js";
 import {
     fetchAiReviewSetting,
+    fetchDocumentReviewSetting,
     fetchSettingRules,
     saveAiReviewSetting,
+    saveDocumentReviewSetting,
     saveSettingRules
 } from "../scripts/services/apiService.js";
 import {
@@ -54,6 +60,16 @@ const workspaceLogoModules = import.meta.glob("../assets/InfoMacro_logo.jpg", {
     import: "default"
 });
 const workspaceLogoSrc = Object.values(workspaceLogoModules)[0] ?? "";
+const DOCUMENT_REVIEW_PATH = "__documents__/ai-status.json";
+const DEFAULT_DOCUMENT_PROMPT =
+    "你是一位軟體交付與作業稽核專家，請根據以下樹狀圖與檢查清單，輸出 JSON 描述缺漏、風險與改善建議。\n{{content}}";
+const DEFAULT_DOCUMENT_CHECKS = [
+    { key: "approval_form", label: "演練與投產審批表", description: "是否有提供《演練與投產審批表.docx》", enabled: true },
+    { key: "test_logs", label: "測試日誌", description: "是否提供測試日誌（log 文件）", enabled: true },
+    { key: "rollback_script", label: "回退腳本", description: "是否提供回退腳本（rollback 類文件）", enabled: true },
+    { key: "deployment_guide", label: "投產指引", description: "是否提供投產指引（guide 類文件）", enabled: true },
+    { key: "sql_utf8_nobom", label: "SQL UTF-8 無 BOM", description: "SQL 腳本是否為 UTF-8 無 BOM 格式", enabled: true }
+];
 
 const preview = usePreview();
 
@@ -228,6 +244,14 @@ const aiReviewState = reactive({
     message: "",
     loaded: { SQL: false, Java: false }
 });
+const documentSettingState = reactive({
+    loading: false,
+    saving: false,
+    message: "",
+    loaded: false,
+    checks: [...DEFAULT_DOCUMENT_CHECKS],
+    promptTemplate: DEFAULT_DOCUMENT_PROMPT
+});
 const activeRuleSettings = computed(() => {
     const language = settingLanguage.value;
     if (!Array.isArray(ruleSettingsByLanguage[language])) {
@@ -375,6 +399,7 @@ const reportPanelConfig = computed(() => {
         toggleNode: toggleReportNode,
         getReportState: getReportStateForFile,
         onGenerate: generateReportForFile,
+        onGenerateDocument: generateDocumentReview,
         onSelect: viewMode === "reports" ? selectReport : openProjectFileFromReportTree,
         getStatusLabel,
         onReloadProject: loadReportTreeForProject,
@@ -3017,6 +3042,12 @@ watch(settingLanguage, (language) => {
     }
 });
 
+watch(activeSettingTab, (tab) => {
+    if (tab === "documents" && isSettingsViewActive.value) {
+        ensureSettingsLoaded(settingLanguage.value);
+    }
+});
+
 function handleSelectProject(project) {
     if (!project) return;
     const currentId = selectedProjectId.value;
@@ -3080,6 +3111,9 @@ function ensureSettingsLoaded(language = settingLanguage.value) {
     }
     if (!aiReviewState.loaded[targetLanguage] && !aiReviewState.loading) {
         loadAiReviewSettingContent(targetLanguage);
+    }
+    if (activeSettingTab.value === "documents" && !documentSettingState.loaded && !documentSettingState.loading) {
+        loadDocumentReviewSettingContent();
     }
 }
 
@@ -3213,6 +3247,43 @@ async function handleSaveAiReviewSetting() {
         safeAlertFail(error);
     } finally {
         aiReviewState.saving = false;
+    }
+}
+
+async function loadDocumentReviewSettingContent() {
+    documentSettingState.loading = true;
+    documentSettingState.message = "";
+    try {
+        const response = await fetchDocumentReviewSetting();
+        documentSettingState.checks = Array.isArray(response?.checks) && response.checks.length
+            ? response.checks
+            : [...DEFAULT_DOCUMENT_CHECKS];
+        documentSettingState.promptTemplate =
+            typeof response?.promptTemplate === "string" && response.promptTemplate.trim()
+                ? response.promptTemplate
+                : DEFAULT_DOCUMENT_PROMPT;
+        documentSettingState.loaded = true;
+    } catch (error) {
+        documentSettingState.message = error?.message || "載入文件審查設定失敗";
+    } finally {
+        documentSettingState.loading = false;
+    }
+}
+
+async function handleSaveDocumentReviewSetting() {
+    documentSettingState.saving = true;
+    documentSettingState.message = "";
+    try {
+        await saveDocumentReviewSetting({
+            checks: documentSettingState.checks,
+            promptTemplate: documentSettingState.promptTemplate
+        });
+        documentSettingState.message = "文件審查設定已保存";
+        documentSettingState.loaded = true;
+    } catch (error) {
+        documentSettingState.message = error?.message || "保存文件審查設定失敗";
+    } finally {
+        documentSettingState.saving = false;
     }
 }
 
@@ -3491,6 +3562,20 @@ function ensureReportTreeEntry(projectId) {
     return reportTreeCache[key];
 }
 
+function appendDocumentReviewNode(nodes) {
+    const existing = (nodes || []).find((node) => node?.path === DOCUMENT_REVIEW_PATH);
+    if (existing) return nodes;
+    const docNode = {
+        type: "file",
+        name: "文件AI審查",
+        path: DOCUMENT_REVIEW_PATH,
+        parent: "",
+        mime: "application/json",
+        isDocumentReview: true
+    };
+    return Array.isArray(nodes) ? [...nodes, docNode] : [docNode];
+}
+
 function ensureProjectBatchState(projectId) {
     const key = normaliseProjectId(projectId);
     if (!key) return null;
@@ -3757,11 +3842,12 @@ async function loadReportTreeForProject(projectId) {
     entry.error = "";
     try {
         const nodes = await treeStore.loadTreeFromDB(projectId);
-        entry.nodes = nodes;
-        ensureStatesForProject(projectId, nodes);
+        const augmentedNodes = appendDocumentReviewNode(nodes);
+        entry.nodes = augmentedNodes;
+        ensureStatesForProject(projectId, augmentedNodes);
         await hydrateReportsForProject(projectId);
         const nextExpanded = new Set(entry.expandedPaths);
-        for (const node of nodes) {
+        for (const node of augmentedNodes) {
             if (node.type === "dir") {
                 nextExpanded.add(node.path);
             }
@@ -3990,6 +4076,11 @@ async function openProjectFileFromReportTree(projectId, path) {
         targetNode = { type: "file", path, name, mime: "" };
     }
 
+    if (targetNode.isDocumentReview) {
+        selectReport(project.id, targetNode.path);
+        return;
+    }
+
     treeStore.selectTreeNode(path);
     try {
         await treeStore.openNode(targetNode);
@@ -4040,10 +4131,127 @@ async function loadTextContentForNode(project, node) {
     }
 }
 
+async function generateDocumentReview(project, options = {}) {
+    const { autoSelect = true, silent = false } = options;
+    if (!project) {
+        return { status: "skipped" };
+    }
+    const projectId = normaliseProjectId(project.id);
+    const state = ensureFileReportState(projectId, DOCUMENT_REVIEW_PATH);
+    if (!state || state.status === "processing") {
+        return { status: "processing" };
+    }
+
+    state.status = "processing";
+    state.error = "";
+    state.report = "";
+    state.chunks = [];
+    state.segments = [];
+    state.conversationId = "";
+    state.analysis = null;
+    state.issueSummary = null;
+    state.parsedReport = null;
+    state.rawReport = "";
+    state.dify = null;
+    state.dml = null;
+    state.difyErrorMessage = "";
+    state.dmlErrorMessage = "";
+    state.sourceText = "";
+    state.sourceLoaded = false;
+    state.sourceLoading = false;
+    state.sourceError = "";
+    state.combinedReportJson = "";
+    state.staticReportJson = "";
+    state.aiReportJson = "";
+
+    try {
+        const payload = await generateDocumentReviewReport({
+            projectId,
+            projectName: project.name,
+            path: DOCUMENT_REVIEW_PATH
+        });
+
+        const completedAt = payload?.generatedAt ? new Date(payload.generatedAt) : new Date();
+        state.status = "ready";
+        state.updatedAt = completedAt;
+        state.updatedAtDisplay = completedAt.toLocaleString();
+        state.report = payload?.report || "";
+        state.chunks = Array.isArray(payload?.chunks) ? payload.chunks : [];
+        state.segments = Array.isArray(payload?.segments) ? payload.segments : [];
+        state.conversationId = payload?.conversationId || "";
+        state.rawReport = typeof payload?.rawReport === "string" ? payload.rawReport : "";
+        state.dify = normaliseReportObject(payload?.dify) || normaliseReportObject(payload?.analysis?.dify);
+        state.analysis = payload?.analysis || null;
+        state.difyErrorMessage = typeof payload?.difyErrorMessage === "string" ? payload.difyErrorMessage : "";
+        applyAiReviewResultToState(state, payload);
+        state.parsedReport = parseReportJson(state.report);
+        state.issueSummary = computeIssueSummary(state.report, state.parsedReport);
+        normaliseReportAnalysisState(state);
+        updateIssueSummaryTotals(state);
+        state.error = "";
+        state.combinedReportJson = typeof payload?.combinedReportJson === "string" ? payload.combinedReportJson : "";
+        state.staticReportJson = typeof payload?.staticReportJson === "string" ? payload.staticReportJson : "";
+        state.aiReportJson = typeof payload?.aiReportJson === "string" ? payload.aiReportJson : "";
+        if (!state.sourceText && state.segments.length) {
+            state.sourceText = typeof state.segments[0] === "string" ? state.segments[0] : "";
+            state.sourceLoaded = Boolean(state.sourceText);
+        }
+
+        if (autoSelect) {
+            activeReportTarget.value = {
+                projectId,
+                path: DOCUMENT_REVIEW_PATH
+            };
+        }
+
+        return { status: "ready" };
+    } catch (error) {
+        const message = error?.message ? String(error.message) : String(error);
+        state.status = "error";
+        state.error = message;
+        state.report = "";
+        state.chunks = [];
+        state.segments = [];
+        state.conversationId = "";
+        state.analysis = null;
+        state.issueSummary = null;
+        state.parsedReport = null;
+        state.rawReport = "";
+        state.dify = null;
+        state.dml = null;
+        state.difyErrorMessage = "";
+        state.dmlErrorMessage = "";
+        state.sourceLoading = false;
+        state.sourceLoaded = false;
+        state.combinedReportJson = "";
+        state.staticReportJson = "";
+        state.aiReportJson = "";
+        const now = new Date();
+        state.updatedAt = now;
+        state.updatedAtDisplay = now.toLocaleString();
+
+        if (autoSelect) {
+            activeReportTarget.value = {
+                projectId,
+                path: DOCUMENT_REVIEW_PATH
+            };
+        }
+
+        if (!silent) {
+            alert(`生成文件審查報告失敗：${message}`);
+        }
+
+        return { status: "error", error };
+    }
+}
+
 async function generateReportForFile(project, node, options = {}) {
     const { autoSelect = true, silent = false } = options;
     if (!project || !node || node.type !== "file") {
         return { status: "skipped" };
+    }
+    if (node.isDocumentReview) {
+        return await generateDocumentReview(project, { autoSelect, silent });
     }
     const projectId = normaliseProjectId(project.id);
     const state = ensureFileReportState(projectId, node.path);
@@ -4202,7 +4410,7 @@ async function generateProjectReports(project) {
         return;
     }
 
-    const nodes = collectFileNodes(entry.nodes);
+    const nodes = collectFileNodes(entry.nodes).filter((node) => !node.isDocumentReview);
     if (!nodes.length) {
         alert("此專案尚未索引可供審查的檔案");
         return;
@@ -4795,6 +5003,12 @@ onBeforeUnmount(() => {
                                 :aria-selected="activeSettingTab === 'ai-review'">
                                 AI 審查
                             </button>
+                            <button type="button" class="settingsTab"
+                                :class="{ active: activeSettingTab === 'documents' }"
+                                @click="activeSettingTab = 'documents'" role="tab"
+                                :aria-selected="activeSettingTab === 'documents'">
+                                文件審查
+                            </button>
                         </div>
 
                         <div class="settingsContent">
@@ -4858,7 +5072,7 @@ onBeforeUnmount(() => {
                                 </div>
                             </template>
 
-                            <template v-else>
+                            <template v-else-if="activeSettingTab === 'ai-review'">
                                 <div class="settingsCard">
                                     <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
                                     <div class="aiReviewPlaceholderPanel">
@@ -4902,6 +5116,45 @@ onBeforeUnmount(() => {
                                             {{ aiReviewState.saving ? "保存中..." : "保存 AI 設定" }}
                                         </button>
                                     </div>
+                                </div>
+                            </template>
+                            <template v-else-if="activeSettingTab === 'documents'">
+                                <div class="settingsCard">
+                                    <div class="settingsActions">
+                                        <p class="settingsStatus" v-if="documentSettingState.loading">設定載入中...</p>
+                                        <p class="settingsStatus success" v-else-if="documentSettingState.message">
+                                            {{ documentSettingState.message }}
+                                        </p>
+                                        <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
+                                            :disabled="documentSettingState.saving || documentSettingState.loading">
+                                            {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
+                                        </button>
+                                    </div>
+
+                                    <div class="documentChecks">
+                                        <h4 class="documentChecksTitle">檢查清單</h4>
+                                        <p class="documentChecksHint">
+                                            依需求調整是否啟用或修改描述，AI 會使用此清單檢查專案文件。
+                                        </p>
+                                        <div v-for="(check, index) in documentSettingState.checks"
+                                            :key="check.key || `doc-check-${index}`" class="documentCheckRow">
+                                            <label class="toggle">
+                                                <input v-model="check.enabled" type="checkbox" />
+                                                <span>啟用</span>
+                                            </label>
+                                            <div class="documentCheckFields">
+                                                <input v-model="check.label" type="text" class="ruleInput"
+                                                    :placeholder="`檢查項目 ${index + 1}`" />
+                                                <input v-model="check.description" type="text" class="ruleInput"
+                                                    :placeholder="`說明 ${index + 1}`" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
+                                    <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
+                                        class="aiReviewInput" rows="6"
+                                        placeholder="輸入要送給 Dify 的文件檢查提示" :disabled="documentSettingState.loading"></textarea>
                                 </div>
                             </template>
                         </div>
@@ -5645,6 +5898,42 @@ body,
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.documentChecks {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.documentChecksTitle {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.documentChecksHint {
+    margin: 0 0 4px;
+    color: var(--panel-muted);
+    font-size: 12px;
+}
+
+.documentCheckRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    background: var(--panel-surface);
+}
+
+.documentCheckFields {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .aiReviewPlaceholderHeader {
