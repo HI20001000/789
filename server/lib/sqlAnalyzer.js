@@ -2171,11 +2171,11 @@ export function buildSqlReportPayload({
     let finalReport = difyReport && difyReport.trim() ? difyReport : rawReport;
 
     const difyIssuesRaw = difyIssuesSanitised;
+    const reportsDifyIssues = cloneIssueListForPersistence(difyIssuesRaw);
     const difyIssuesWithSource = difyIssuesRaw.map((issue) => annotateIssueSource(issue, "dify_workflow"));
     const combinedIssues = [...staticIssuesWithSource, ...difyIssuesWithSource, ...dmlIssuesWithSource];
-    const difySummary = parsedDifyReport
-        ? normaliseDifySummary(parsedDifyReport, difyIssuesRaw.length)
-        : null;
+    const difySummarySource = parsedDifyReport || dify?.aggregated || null;
+    const difySummary = normaliseDifySummary(difySummarySource, difyIssuesRaw.length);
     logSqlPayloadStage("dify.summary", difySummary);
     logSqlPayloadStage("issues.combined", combinedIssues);
 
@@ -2200,7 +2200,8 @@ export function buildSqlReportPayload({
 
     const combinedIssuesForReports = dedupeIssueList([
         ...reportsStaticIssues,
-        ...reportsAiIssues
+        ...reportsAiIssues,
+        ...reportsDifyIssues
     ]);
 
     dmlReportPayload.issues = cloneIssueListForPersistence(aiIssuesForPersistence);
@@ -2214,6 +2215,17 @@ export function buildSqlReportPayload({
                 label: "靜態分析器",
                 summary: staticSummary,
                 issues: reportsStaticIssues
+            })
+        );
+    }
+    if (difySummary) {
+        combinedSummaryRecords.push(
+            buildSummaryRecordForPersistence({
+                source: "dify_workflow",
+                label: "Dify 工作流",
+                summary: difySummary,
+                issues: reportsDifyIssues,
+                fallbackGeneratedAt: dify?.generatedAt || generatedAt
             })
         );
     }
@@ -2299,7 +2311,7 @@ export function buildSqlReportPayload({
         finalPayload.reports.dify_workflow = {
             type: "dify_workflow",
             summary: cloneValue(difySummary),
-            issues: cloneIssueListForPersistence(difyIssuesRaw),
+            issues: cloneIssueListForPersistence(reportsDifyIssues),
             metadata: { analysis_source: "dify_workflow" },
             raw: parsedDify,
             report: difyReport
@@ -2307,7 +2319,7 @@ export function buildSqlReportPayload({
     } else if (difyIssuesRaw.length) {
         finalPayload.reports.dify_workflow = {
             type: "dify_workflow",
-            issues: cloneIssueListForPersistence(difyIssuesRaw),
+            issues: cloneIssueListForPersistence(reportsDifyIssues),
             metadata: { analysis_source: "dify_workflow" }
         };
     }
@@ -2359,7 +2371,7 @@ export function buildSqlReportPayload({
             analysisPayload.difySummary = difySummary;
         }
         if (!analysisPayload.difyIssues && difyIssuesRaw.length) {
-            analysisPayload.difyIssues = cloneIssueListForPersistence(difyIssuesRaw);
+            analysisPayload.difyIssues = cloneIssueListForPersistence(reportsDifyIssues);
         }
         if (dmlErrorMessage) {
             analysisPayload.dmlErrorMessage = dmlErrorMessage;
