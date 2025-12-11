@@ -4658,7 +4658,11 @@ watch(
                 throw new Error("找不到對應的檔案");
             }
             const file = await fileHandle.getFile();
-            const text = await file.text();
+            const text = await preview.readTextContent(file, {
+                name: report.path,
+                mime: file.type || "",
+                maxBytes: preview.MAX_TEXT_BYTES * 4
+            });
             state.sourceText = typeof text === "string" ? text : "";
             state.sourceLoaded = true;
             state.sourceError = "";
