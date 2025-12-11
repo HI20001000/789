@@ -578,6 +578,34 @@ function renderTemplate(template, replacements) {
     });
 }
 
+function normaliseTemplateContext(context) {
+    if (!context || typeof context !== "object") {
+        return {};
+    }
+    const result = {};
+    for (const [key, value] of Object.entries(context)) {
+        if (!key || typeof key !== "string") continue;
+        const trimmed = key.trim();
+        if (!trimmed) continue;
+        if (value === null || value === undefined) {
+            result[trimmed] = "";
+        } else if (typeof value === "string") {
+            result[trimmed] = value;
+        } else if (typeof value === "number") {
+            result[trimmed] = Number.isFinite(value) ? String(value) : "";
+        } else if (typeof value === "boolean") {
+            result[trimmed] = value ? "true" : "false";
+        } else {
+            try {
+                result[trimmed] = JSON.stringify(value);
+            } catch (_error) {
+                result[trimmed] = String(value);
+            }
+        }
+    }
+    return result;
+}
+
 function buildPrompt({
     segmentText,
     projectName,
@@ -588,7 +616,8 @@ function buildPrompt({
     location,
     templateText,
     rulesText,
-    selectionRaw
+    selectionRaw,
+    templateContext
 }) {
     const issueContext = location && typeof location === "object" ? location.issueContext : null;
     if (typeof templateText === "string" && templateText.trim()) {
@@ -631,7 +660,8 @@ function buildPrompt({
             code: typeof segmentText === "string" ? segmentText : "",
             chunk_code: typeof segmentText === "string" ? segmentText : "",
             segment_text: typeof segmentText === "string" ? segmentText : "",
-            content: typeof segmentText === "string" ? segmentText : ""
+            content: typeof segmentText === "string" ? segmentText : "",
+            ...normaliseTemplateContext(templateContext)
         };
 
         return renderTemplate(templateText, replacements);
@@ -764,7 +794,8 @@ export async function requestDifyReport({
     conversationId: initialConversationId,
     language,
     loadAiReviewTemplate,
-    loadAiReviewRules
+    loadAiReviewRules,
+    templateContext
 }) {
     assertConfig();
     const rawSegments = Array.isArray(presetSegments) && presetSegments.length
@@ -820,7 +851,8 @@ export async function requestDifyReport({
                 location: segmentMeta,
                 templateText: cachedTemplate,
                 rulesText: cachedRulesText,
-                selectionRaw: selection
+                selectionRaw: selection,
+                templateContext
             }),
             response_mode: responseMode,
             conversation_id: conversationId,
