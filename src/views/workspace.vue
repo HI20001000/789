@@ -226,6 +226,7 @@ const reportStates = reactive({});
 const reportTreeCache = reactive({});
 const reportBatchStates = reactive({});
 const activeReportTarget = ref(null);
+const pendingReportTarget = ref(null);
 const pendingReportIssueFocus = ref(null);
 const reportExportState = reactive({
     combined: false,
@@ -416,6 +417,24 @@ const activePreviewTarget = computed(() => {
     return { projectId, path };
 });
 
+function handleReportPanelGenerate(project, node) {
+    const delaySelect = isReportToolActive.value;
+    return generateReportForFile(project, node, {
+        autoSelect: true,
+        silent: false,
+        delaySelectUntilReady: delaySelect
+    });
+}
+
+function handleDocumentReportGenerate(project) {
+    const delaySelect = isReportToolActive.value;
+    return generateDocumentReview(project, {
+        autoSelect: true,
+        silent: false,
+        delaySelectUntilReady: delaySelect
+    });
+}
+
 const reportPanelConfig = computed(() => {
     const viewMode = isReportToolActive.value ? "reports" : "projects";
     const showProjectActions = isReportToolActive.value;
@@ -435,8 +454,8 @@ const reportPanelConfig = computed(() => {
         isNodeExpanded: isReportNodeExpanded,
         toggleNode: toggleReportNode,
         getReportState: getReportStateForFile,
-        onGenerate: generateReportForFile,
-        onGenerateDocument: generateDocumentReview,
+        onGenerate: handleReportPanelGenerate,
+        onGenerateDocument: handleDocumentReportGenerate,
         onSelect: viewMode === "reports" ? selectReport : openProjectFileFromReportTree,
         getStatusLabel,
         onReloadProject: loadReportTreeForProject,
@@ -514,6 +533,21 @@ const activeReport = computed(() => {
 
 const isActiveReportProcessing = computed(
     () => activeReport.value?.state?.status === "processing"
+);
+const isReportGenerationPending = computed(() => Boolean(pendingReportTarget.value));
+const reportViewerStatusText = computed(() => {
+    if (isActiveReportProcessing.value) {
+        return "正在透過 Dify 執行 AI審查，請稍候…";
+    }
+    const pending = pendingReportTarget.value;
+    if (pending) {
+        const label = pending.label || pending.path;
+        return label ? `正在生成 ${label} 的報告，請稍候…` : "正在生成報告，請稍候…";
+    }
+    return "";
+});
+const isReportViewerBusy = computed(
+    () => isActiveReportProcessing.value || isReportGenerationPending.value
 );
 
 const viewerHasContent = computed(() => {
@@ -3714,6 +3748,26 @@ function ensureFileReportState(projectId, path) {
     return reportStates[key];
 }
 
+function markPendingReportTarget(projectId, path, label = "") {
+    const normalisedProjectId = normaliseProjectId(projectId);
+    if (!normalisedProjectId || !path) return;
+    pendingReportTarget.value = {
+        projectId: normalisedProjectId,
+        path,
+        label
+    };
+}
+
+function clearPendingReportTarget(projectId, path) {
+    const normalisedProjectId = normaliseProjectId(projectId);
+    if (!normalisedProjectId || !path) return;
+    const pending = pendingReportTarget.value;
+    if (!pending) return;
+    if (pending.projectId === normalisedProjectId && pending.path === path) {
+        pendingReportTarget.value = null;
+    }
+}
+
 function getReportStateForFile(projectId, path) {
     return ensureFileReportState(projectId, path) || createDefaultReportState();
 }
@@ -4234,7 +4288,7 @@ async function loadTextContentForNode(project, node) {
 }
 
 async function generateDocumentReview(project, options = {}) {
-    const { autoSelect = true, silent = false } = options;
+    const { autoSelect = true, silent = false, delaySelectUntilReady = false } = options;
     if (!project) {
         return { status: "skipped" };
     }
@@ -4242,6 +4296,12 @@ async function generateDocumentReview(project, options = {}) {
     const state = ensureFileReportState(projectId, DOCUMENT_REVIEW_PATH);
     if (!state || state.status === "processing") {
         return { status: "processing" };
+    }
+
+    const shouldDelaySelection = Boolean(delaySelectUntilReady && autoSelect);
+    const shouldSelectImmediately = autoSelect && !shouldDelaySelection;
+    if (shouldDelaySelection) {
+        markPendingReportTarget(projectId, DOCUMENT_REVIEW_PATH, "文件掃描報告");
     }
 
     state.status = "processing";
@@ -4299,7 +4359,7 @@ async function generateDocumentReview(project, options = {}) {
             state.sourceLoaded = Boolean(state.sourceText);
         }
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: DOCUMENT_REVIEW_PATH
@@ -4332,7 +4392,7 @@ async function generateDocumentReview(project, options = {}) {
         state.updatedAt = now;
         state.updatedAtDisplay = now.toLocaleString();
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: DOCUMENT_REVIEW_PATH
@@ -4344,21 +4404,39 @@ async function generateDocumentReview(project, options = {}) {
         }
 
         return { status: "error", error };
+    } finally {
+        if (shouldDelaySelection) {
+            activeReportTarget.value = {
+                projectId,
+                path: DOCUMENT_REVIEW_PATH
+            };
+            clearPendingReportTarget(projectId, DOCUMENT_REVIEW_PATH);
+        }
     }
 }
 
 async function generateReportForFile(project, node, options = {}) {
-    const { autoSelect = true, silent = false } = options;
+    const { autoSelect = true, silent = false, delaySelectUntilReady = false } = options;
     if (!project || !node || node.type !== "file") {
         return { status: "skipped" };
     }
     if (node.isDocumentReview) {
-        return await generateDocumentReview(project, { autoSelect, silent });
+        return await generateDocumentReview(project, {
+            autoSelect,
+            silent,
+            delaySelectUntilReady
+        });
     }
     const projectId = normaliseProjectId(project.id);
     const state = ensureFileReportState(projectId, node.path);
     if (!state || state.status === "processing") {
         return { status: "processing" };
+    }
+
+    const shouldDelaySelection = Boolean(delaySelectUntilReady && autoSelect);
+    const shouldSelectImmediately = autoSelect && !shouldDelaySelection;
+    if (shouldDelaySelection) {
+        markPendingReportTarget(projectId, node.path, node.name || node.path);
     }
 
     state.status = "processing";
@@ -4427,7 +4505,7 @@ async function generateReportForFile(project, node, options = {}) {
         state.staticReportJson = typeof payload?.staticReportJson === "string" ? payload.staticReportJson : "";
         state.aiReportJson = typeof payload?.aiReportJson === "string" ? payload.aiReportJson : "";
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: node.path
@@ -4462,7 +4540,7 @@ async function generateReportForFile(project, node, options = {}) {
         state.updatedAt = now;
         state.updatedAtDisplay = now.toLocaleString();
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: node.path
@@ -4478,6 +4556,14 @@ async function generateReportForFile(project, node, options = {}) {
         }
 
         return { status: "error", error };
+    } finally {
+        if (shouldDelaySelection) {
+            activeReportTarget.value = {
+                projectId,
+                path: node.path
+            };
+            clearPendingReportTarget(projectId, node.path);
+        }
     }
 }
 
@@ -5296,15 +5382,15 @@ onBeforeUnmount(() => {
                 </template>
                 <template v-else-if="isReportToolActive">
                     <div class="panelHeader">報告檢視</div>
-                    <template v-if="hasReadyReports || viewerHasContent">
+                    <template v-if="hasReadyReports || viewerHasContent || isReportGenerationPending">
                         <div class="reportViewerContent"
-                            :class="{ 'reportViewerContent--loading': isActiveReportProcessing }"
-                            ref="reportViewerContentRef" :aria-busy="isActiveReportProcessing ? 'true' : 'false'">
-                            <div v-if="isActiveReportProcessing"
+                            :class="{ 'reportViewerContent--loading': isReportViewerBusy }"
+                            ref="reportViewerContentRef" :aria-busy="isReportViewerBusy ? 'true' : 'false'">
+                            <div v-if="isReportViewerBusy"
                                 class="reportViewerProcessingOverlay reportViewerLoading" role="status"
                                 aria-live="polite">
                                 <span class="reportViewerSpinner" aria-hidden="true"></span>
-                                <p class="reportViewerProcessingText">正在透過 Dify 執行 AI審查，請稍候…</p>
+                                <p class="reportViewerProcessingText">{{ reportViewerStatusText }}</p>
                             </div>
                             <template v-if="activeReport">
                                 <div class="reportViewerHeader">
