@@ -260,6 +260,8 @@ const availableSettingLanguages = ["SQL", "Java"];
 const settingLanguage = ref("SQL");
 // Legacy placeholder to avoid runtime reference errors after removing the settings tab toggle
 const activeSettingTab = ref("rules");
+const isAiSettingsCollapsed = ref(true);
+const isDocumentSettingsCollapsed = ref(true);
 const ruleSettingsByLanguage = reactive({ SQL: [], Java: [] });
 const aiReviewContentByLanguage = reactive({ SQL: "", Java: "" });
 const rulePanelMode = ref("rules");
@@ -3132,6 +3134,14 @@ function toggleSettingsView() {
     ensureSettingsLoaded();
 }
 
+function toggleAiSettingsCollapsed() {
+    isAiSettingsCollapsed.value = !isAiSettingsCollapsed.value;
+}
+
+function toggleDocumentSettingsCollapsed() {
+    isDocumentSettingsCollapsed.value = !isDocumentSettingsCollapsed.value;
+}
+
 function activateRailTool(tool) {
     if (tool !== "settings") {
         lastNonSettingsTool.value = tool;
@@ -5089,23 +5099,34 @@ onBeforeUnmount(() => {
 
                         <div class="settingsContent">
                             <div class="settingsCard">
-                                <div class="settingsActions">
-                                    <p class="settingsStatus" v-if="ruleSettingsState.loading || aiReviewState.loading">
-                                        設定載入中...
-                                    </p>
-                                    <p class="settingsStatus success"
-                                        v-else-if="ruleSettingsState.message || aiReviewState.message">
-                                        {{ ruleSettingsState.message || aiReviewState.message }}
-                                    </p>
-                                    <button type="button" class="btn outline" @click="addRuleRow"
-                                        :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
-                                        新增規則
-                                    </button>
-                                    <button type="button" class="btn" @click="handleSaveRules"
-                                        :disabled="ruleSettingsState.saving || ruleSettingsState.loading || aiReviewState.saving || aiReviewState.loading">
-                                        {{ ruleSettingsState.saving ? "保存中..." : "保存設定" }}
-                                    </button>
-                                </div>
+                                <button type="button" class="settingsCollapseHeader"
+                                    :aria-expanded="!isAiSettingsCollapsed" @click="toggleAiSettingsCollapsed">
+                                    <div class="settingsCollapseTitle">審查設定</div>
+                                    <span class="settingsCollapseHint">{{
+                                        isAiSettingsCollapsed ? "審查設定（已拆疊）" : "審查設定（展開中）" }}</span>
+                                    <span class="settingsCollapseIcon" aria-hidden="true">{{
+                                        isAiSettingsCollapsed ? "＋" : "－" }}</span>
+                                </button>
+
+                                <div class="settingsCollapseContent" v-show="!isAiSettingsCollapsed">
+                                    <div class="settingsActions">
+                                        <p class="settingsStatus"
+                                            v-if="ruleSettingsState.loading || aiReviewState.loading">
+                                            設定載入中...
+                                        </p>
+                                        <p class="settingsStatus success"
+                                            v-else-if="ruleSettingsState.message || aiReviewState.message">
+                                            {{ ruleSettingsState.message || aiReviewState.message }}
+                                        </p>
+                                        <button type="button" class="btn outline" @click="addRuleRow"
+                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
+                                            新增規則
+                                        </button>
+                                        <button type="button" class="btn" @click="handleSaveRules"
+                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading || aiReviewState.saving || aiReviewState.loading">
+                                            {{ ruleSettingsState.saving ? "保存中..." : "保存設定" }}
+                                        </button>
+                                    </div>
 
                                 <div class="ruleGrid" role="table" aria-label="規則列表">
                                     <div class="ruleRow ruleRow--header" role="row">
@@ -5121,125 +5142,145 @@ onBeforeUnmount(() => {
                                             <input v-model="rule.ruleId" type="text" class="ruleInput"
                                                 :aria-label="`規則 ${index + 1} ID`" placeholder="R-001" />
                                         </div>
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="rule.description" type="text" class="ruleInput"
-                                                :aria-label="`規則 ${index + 1} 描述`"
-                                                :placeholder="ruleDescriptionPlaceholder" />
-                                        </div>
-                                        <div class="ruleCell" role="cell">
-                                            <label class="toggle">
-                                                <input v-model="rule.enabled" type="checkbox" />
-                                                <span>啟用</span>
-                                            </label>
-                                        </div>
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="rule.riskIndicator" type="text" class="ruleInput"
-                                                :aria-label="`規則 ${index + 1} 風險指標`"
-                                                :placeholder="riskIndicatorPlaceholder" />
-                                        </div>
-                                        <div class="ruleCell ruleCell--actions" role="cell">
-                                            <button type="button" class="btn ghost" @click="removeRuleRow(index)"
-                                                :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
-                                                刪除
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
-                                <div class="aiReviewPlaceholderPanel">
-                                    <div class="aiReviewPlaceholderHeader">
-                                        <p class="aiReviewPlaceholderTitle">可用占位符</p>
-                                        <p class="aiReviewPlaceholderStatusText">{{ aiReviewPlaceholderStatusText }}
-                                        </p>
-                                    </div>
-                                    <div v-for="group in aiReviewPlaceholderPanels" :key="group.key"
-                                        class="aiReviewPlaceholderGroup">
-                                        <p class="aiReviewPlaceholderGroupLabel">{{ group.label }}</p>
-                                        <ul class="aiReviewPlaceholderList">
-                                            <li v-for="placeholder in group.placeholders" :key="placeholder.key"
-                                                class="aiReviewPlaceholderItem">
-                                                <button type="button" class="aiReviewPlaceholderButton"
-                                                    :class="{ used: placeholder.used }"
-                                                    :disabled="placeholder.used || aiReviewState.loading || aiReviewState.saving"
-                                                    :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
-                                                    @click="insertAiReviewPlaceholder(placeholder.key)">
-                                                    {{ formatAiReviewPlaceholder(placeholder.key) }}
+                                        <div v-for="(rule, index) in activeRuleSettings"
+                                            :key="rule.localId || `rule-${index}`" class="ruleRow" role="row">
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="rule.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} ID`" placeholder="R-001" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="rule.description" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} 描述`"
+                                                    :placeholder="ruleDescriptionPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <label class="toggle">
+                                                    <input v-model="rule.enabled" type="checkbox" />
+                                                    <span>啟用</span>
+                                                </label>
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="rule.riskIndicator" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} 風險指標`"
+                                                    :placeholder="riskIndicatorPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell ruleCell--actions" role="cell">
+                                                <button type="button" class="btn ghost" @click="removeRuleRow(index)"
+                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
+                                                    刪除
                                                 </button>
-                                                <span class="aiReviewPlaceholderDescription">{{
-                                                    placeholder.description }}</span>
-                                                <span v-if="placeholder.used"
-                                                    class="aiReviewPlaceholderHint">此占位符已於模版中使用</span>
-                                            </li>
-                                        </ul>
+                                            </div>
+                                        </div>
                                     </div>
+
+                                    <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
+                                    <div class="aiReviewPlaceholderPanel">
+                                        <div class="aiReviewPlaceholderHeader">
+                                            <p class="aiReviewPlaceholderTitle">可用占位符</p>
+                                            <p class="aiReviewPlaceholderStatusText">{{ aiReviewPlaceholderStatusText }}
+                                            </p>
+                                        </div>
+                                        <div v-for="group in aiReviewPlaceholderPanels" :key="group.key"
+                                            class="aiReviewPlaceholderGroup">
+                                            <p class="aiReviewPlaceholderGroupLabel">{{ group.label }}</p>
+                                            <ul class="aiReviewPlaceholderList">
+                                                <li v-for="placeholder in group.placeholders" :key="placeholder.key"
+                                                    class="aiReviewPlaceholderItem">
+                                                    <button type="button" class="aiReviewPlaceholderButton"
+                                                        :class="{ used: placeholder.used }"
+                                                        :disabled="placeholder.used || aiReviewState.loading || aiReviewState.saving"
+                                                        :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
+                                                        @click="insertAiReviewPlaceholder(placeholder.key)">
+                                                        {{ formatAiReviewPlaceholder(placeholder.key) }}
+                                                    </button>
+                                                    <span class="aiReviewPlaceholderDescription">{{
+                                                        placeholder.description }}</span>
+                                                    <span v-if="placeholder.used"
+                                                        class="aiReviewPlaceholderHint">此占位符已於模版中使用</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <textarea id="aiReviewContent" v-model="activeAiReviewContent"
+                                        class="aiReviewInput" ref="aiReviewInputRef" rows="8"
+                                        :placeholder="aiReviewPlaceholder"
+                                        :disabled="aiReviewState.loading || aiReviewState.saving"></textarea>
                                 </div>
-                                <textarea id="aiReviewContent" v-model="activeAiReviewContent"
-                                    class="aiReviewInput" ref="aiReviewInputRef" rows="8"
-                                    :placeholder="aiReviewPlaceholder"
-                                    :disabled="aiReviewState.loading || aiReviewState.saving"></textarea>
                             </div>
 
                             <div class="settingsCard">
-                                <div class="settingsActions">
-                                    <p class="settingsStatus" v-if="documentSettingState.loading">設定載入中...</p>
-                                    <p class="settingsStatus success" v-else-if="documentSettingState.message">
-                                        {{ documentSettingState.message }}
-                                    </p>
-                                    <button type="button" class="btn outline" @click="addDocumentRuleRow"
-                                        :disabled="documentSettingState.loading || documentSettingState.saving">
-                                        新增規則
-                                    </button>
-                                    <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
-                                        :disabled="documentSettingState.saving || documentSettingState.loading">
-                                        {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
-                                    </button>
-                                </div>
+                                <button type="button" class="settingsCollapseHeader"
+                                    :aria-expanded="!isDocumentSettingsCollapsed"
+                                    @click="toggleDocumentSettingsCollapsed">
+                                    <div class="settingsCollapseTitle">文件掃描設定</div>
+                                    <span class="settingsCollapseHint">{{
+                                        isDocumentSettingsCollapsed ? "文件掃描設定（已拆疊）" : "文件掃描設定（展開中）" }}</span>
+                                    <span class="settingsCollapseIcon" aria-hidden="true">{{
+                                        isDocumentSettingsCollapsed ? "＋" : "－" }}</span>
+                                </button>
 
-                                <div class="ruleGrid" role="table" aria-label="文件規則列表">
-                                    <div class="ruleRow ruleRow--header" role="row">
-                                        <div class="ruleCell" role="columnheader">規則 ID</div>
-                                        <div class="ruleCell" role="columnheader">描述</div>
-                                        <div class="ruleCell" role="columnheader">啟用</div>
-                                        <div class="ruleCell" role="columnheader">風險指標</div>
-                                        <div class="ruleCell" role="columnheader">操作</div>
+                                <div class="settingsCollapseContent" v-show="!isDocumentSettingsCollapsed">
+                                    <div class="settingsActions">
+                                        <p class="settingsStatus" v-if="documentSettingState.loading">設定載入中...</p>
+                                        <p class="settingsStatus success" v-else-if="documentSettingState.message">
+                                            {{ documentSettingState.message }}
+                                        </p>
+                                        <button type="button" class="btn outline" @click="addDocumentRuleRow"
+                                            :disabled="documentSettingState.loading || documentSettingState.saving">
+                                            新增規則
+                                        </button>
+                                        <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
+                                            :disabled="documentSettingState.saving || documentSettingState.loading">
+                                            {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
+                                        </button>
                                     </div>
-                                    <div v-for="(check, index) in documentSettingState.checks"
-                                        :key="check.localId || check.ruleId || `doc-check-${index}`"
-                                        class="ruleRow" role="row">
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="check.ruleId" type="text" class="ruleInput"
-                                                :aria-label="`文件規則 ${index + 1} ID`" placeholder="DOC-001" />
-                                        </div>
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="check.description" type="text" class="ruleInput"
-                                                :aria-label="`文件規則 ${index + 1} 描述`"
-                                                :placeholder="ruleDescriptionPlaceholder" />
-                                        </div>
-                                        <div class="ruleCell" role="cell">
-                                            <label class="toggle">
-                                                <input v-model="check.enabled" type="checkbox" />
-                                                <span>啟用</span>
-                                            </label>
-                                        </div>
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="check.riskIndicator" type="text" class="ruleInput"
-                                                :aria-label="`文件規則 ${index + 1} 風險指標`"
-                                                :placeholder="riskIndicatorPlaceholder" />
-                                        </div>
-                                        <div class="ruleCell ruleCell--actions" role="cell">
-                                            <button type="button" class="btn ghost" @click="removeDocumentRuleRow(index)"
-                                                :disabled="documentSettingState.loading || documentSettingState.saving">
-                                                刪除
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
 
-                                <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
-                                <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
-                                    class="aiReviewInput" rows="6"
-                                    placeholder="輸入要送給 Dify 的文件檢查提示" :disabled="documentSettingState.loading"></textarea>
+                                    <div class="ruleGrid" role="table" aria-label="文件規則列表">
+                                        <div class="ruleRow ruleRow--header" role="row">
+                                            <div class="ruleCell" role="columnheader">規則 ID</div>
+                                            <div class="ruleCell" role="columnheader">描述</div>
+                                            <div class="ruleCell" role="columnheader">啟用</div>
+                                            <div class="ruleCell" role="columnheader">風險指標</div>
+                                            <div class="ruleCell" role="columnheader">操作</div>
+                                        </div>
+                                        <div v-for="(check, index) in documentSettingState.checks"
+                                            :key="check.localId || check.ruleId || `doc-check-${index}`"
+                                            class="ruleRow" role="row">
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} ID`" placeholder="DOC-001" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.description" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 描述`"
+                                                    :placeholder="ruleDescriptionPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <label class="toggle">
+                                                    <input v-model="check.enabled" type="checkbox" />
+                                                    <span>啟用</span>
+                                                </label>
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.riskIndicator" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 風險指標`"
+                                                    :placeholder="riskIndicatorPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell ruleCell--actions" role="cell">
+                                                <button type="button" class="btn ghost" @click="removeDocumentRuleRow(index)"
+                                                    :disabled="documentSettingState.loading || documentSettingState.saving">
+                                                    刪除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
+                                    <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
+                                        class="aiReviewInput" rows="6"
+                                        placeholder="輸入要送給 Dify 的文件檢查提示"
+                                        :disabled="documentSettingState.loading"></textarea>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -5877,6 +5918,43 @@ body,
     flex-direction: column;
     gap: 12px;
     box-shadow: 0 8px 16px rgba(15, 23, 42, 0.06);
+}
+
+.settingsCollapseHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+    width: 100%;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #0f172a;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.settingsCollapseTitle {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.settingsCollapseHint {
+    margin-left: auto;
+    color: #475569;
+    font-size: 13px;
+}
+
+.settingsCollapseIcon {
+    font-size: 16px;
+    color: #0f172a;
+}
+
+.settingsCollapseContent {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .settingsActions {
