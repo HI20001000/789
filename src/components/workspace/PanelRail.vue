@@ -388,8 +388,7 @@ function handlePointerDown(event) {
 .treePlaceholder {
     flex: 1 1 auto;
     min-width: 0;
-    background: linear-gradient(180deg, rgba(148, 163, 184, 0.08) 0%, rgba(148, 163, 184, 0.02) 100%),
-        var(--panel-surface);
+    background: linear-gradient(180deg, rgba(148, 163, 184, 0.08) 0%, rgba(148, 163, 184, 0.02) 100%), var(--panel-surface);
     border: 1px solid var(--panel-border);
 
     padding: 18px;
