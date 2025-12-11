@@ -31,6 +31,10 @@ const props = defineProps({
         type: Function,
         required: true
     },
+    onGenerateDocument: {
+        type: Function,
+        default: null
+    },
     onSelect: {
         type: Function,
         required: true
@@ -134,6 +138,13 @@ const handleProjectGenerateClick = (event, project) => {
     props.onGenerateProject(project);
 };
 
+const handleProjectDocumentClick = (event, project) => {
+    event?.stopPropagation?.();
+    if (typeof props.onGenerateDocument === "function") {
+        props.onGenerateDocument(project);
+    }
+};
+
 const projectBatchRunning = (projectId) => {
     const state = props.getProjectBatchState(projectId);
     return Boolean(state?.running);
@@ -189,6 +200,15 @@ const projectBatchProgress = (projectId) => {
                                     批次生成中 {{ projectBatchProgress(entry.project.id) }}
                                 </span>
                                 <span v-else>一鍵生成</span>
+                            </button>
+                            <button
+                                v-if="showProjectActions && !entry.cache.error && onGenerateDocument"
+                                type="button"
+                                class="reportDocBtn"
+                                :disabled="entry.cache.loading"
+                                @click="handleProjectDocumentClick($event, entry.project)"
+                            >
+                                文件審查
                             </button>
                             <button
                                 v-else-if="entry.cache.error"
@@ -327,6 +347,18 @@ const projectBatchProgress = (projectId) => {
     border-radius: 6px;
     border: 1px solid var(--panel-border);
     background: var(--panel-surface-alt);
+    color: var(--panel-heading);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.reportDocBtn {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-surface);
     color: var(--panel-heading);
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
