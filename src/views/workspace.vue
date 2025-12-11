@@ -262,6 +262,7 @@ const settingLanguage = ref("SQL");
 const activeSettingTab = ref("rules");
 const ruleSettingsByLanguage = reactive({ SQL: [], Java: [] });
 const aiReviewContentByLanguage = reactive({ SQL: "", Java: "" });
+const rulePanelMode = ref("rules");
 const aiReviewInputRef = ref(null);
 const ruleSettingsState = reactive({
     loading: false,
@@ -3073,6 +3074,12 @@ watch(isSettingsViewActive, (active) => {
 watch(settingLanguage, (language) => {
     if (isSettingsViewActive.value) {
         ensureSettingsLoaded(language);
+    }
+});
+
+watch(activeSettingTab, (tab) => {
+    if (tab === "documents" && isSettingsViewActive.value) {
+        ensureSettingsLoaded(settingLanguage.value);
     }
 });
 
@@ -7439,8 +7446,8 @@ body,
 .codeLineNo {
     position: relative;
     flex: 0 0 auto;
-    width: 5ch;
-    min-width: 5ch;
+    width: 7ch;
+    min-width: 7ch;
     padding: 0 12px 0 0;
     text-align: right;
     color: #4b5563;
