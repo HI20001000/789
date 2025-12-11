@@ -8,7 +8,8 @@ import * as fileSystemService from "../scripts/services/fileSystemService.js";
 import {
     generateReportViaDify,
     generateDocumentReviewReport,
-    fetchProjectReports
+    fetchProjectReports,
+    fetchProjectDocumentReports
 } from "../scripts/services/reportService.js";
 import {
     fetchAiReviewSetting,
@@ -3998,8 +3999,17 @@ async function hydrateReportsForProject(projectId) {
     entry.hydratingReports = true;
     entry.reportHydrationError = "";
     try {
-        const records = await fetchProjectReports(projectId);
-        for (const record of records) {
+        const [records, documentRecords] = await Promise.all([
+            fetchProjectReports(projectId),
+            fetchProjectDocumentReports(projectId)
+        ]);
+        const mergedRecords = new Map();
+        for (const record of [...(records || []), ...(documentRecords || [])]) {
+            if (!record || !record.path) continue;
+            const key = record.path;
+            mergedRecords.set(key, record);
+        }
+        for (const record of mergedRecords.values()) {
             if (!record || !record.path) continue;
             const state = ensureFileReportState(projectId, record.path);
             if (!state) continue;

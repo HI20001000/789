@@ -20,6 +20,7 @@ const props = defineProps({
 
 const isDirectory = computed(() => props.node.type === "dir");
 const isFile = computed(() => props.node.type === "file");
+const isDocumentReview = computed(() => Boolean(props.node.isDocumentReview));
 
 const fileState = computed(() => {
     if (!isFile.value) return null;
@@ -107,6 +108,9 @@ const isNodeExpanded = computed(() => {
 const icon = computed(() => {
     if (isDirectory.value) {
         return isNodeExpanded.value ? "📂" : "📁";
+    }
+    if (isDocumentReview.value) {
+        return "🧾";
     }
     return "📄";
 });

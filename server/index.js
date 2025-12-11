@@ -1073,6 +1073,7 @@ function mapReportRow(row) {
 
     return {
         projectId: row.project_id,
+        projectName: row.project_name || "",
         path: row.path,
         report: row.report || "",
         chunks,
@@ -1090,6 +1091,26 @@ function mapReportRow(row) {
         staticReportJson,
         aiReportJson
     };
+}
+
+function mapDocumentReportRow(row) {
+    return {
+        ...mapReportRow({
+            ...row,
+            project_id: row.project_id || row.project_name
+        }),
+        projectName: row.project_name || row.project_id || ""
+    };
+}
+
+async function fetchProjectNameById(projectId) {
+    if (!projectId) return "";
+    const [rows] = await pool.query(
+        "SELECT name FROM projects WHERE id = ? LIMIT 1",
+        [projectId]
+    );
+    if (!rows.length) return "";
+    return typeof rows[0].name === "string" ? rows[0].name : "";
 }
 
 function normaliseSnippetSelection(selection) {
@@ -1257,6 +1278,93 @@ async function upsertReport({
             static_report_json = VALUES(static_report_json),
             ai_report_json = VALUES(ai_report_json)`,
         [
+            safeProjectId,
+            safePath,
+            safeReport,
+            serialisedChunks,
+            serialisedSegments,
+            safeConversationId,
+            safeUserId,
+            storedGeneratedAt,
+            now,
+            now,
+            safeCombinedJson,
+            safeStaticJson,
+            safeAiJson
+        ]
+    );
+}
+
+async function upsertDocumentReport({
+    projectName,
+    projectId,
+    path,
+    report,
+    chunks,
+    segments,
+    conversationId,
+    userId,
+    generatedAt,
+    combinedReportJson,
+    staticReportJson,
+    aiReportJson
+}) {
+    if (!projectName || !path) {
+        throw new Error("Document report upsert requires projectName and path");
+    }
+    const now = Date.now();
+    const generatedTime = (() => {
+        if (!generatedAt) return Number.NaN;
+        if (typeof generatedAt === "number") {
+            return generatedAt;
+        }
+        const parsed = Date.parse(generatedAt);
+        return Number.isNaN(parsed) ? Number.NaN : parsed;
+    })();
+    const storedGeneratedAt = Number.isFinite(generatedTime) ? generatedTime : now;
+    const serialisedChunks = JSON.stringify(Array.isArray(chunks) ? chunks : []);
+    const serialisedSegments = JSON.stringify(Array.isArray(segments) ? segments : []);
+    const safeProjectName = String(projectName);
+    const safeProjectId = typeof projectId === "string" ? projectId : projectId ? String(projectId) : "";
+    const safePath = typeof path === "string" ? path : String(path);
+    const safeReport = typeof report === "string" ? report : "";
+    const safeConversationId = typeof conversationId === "string" ? conversationId : "";
+    const safeUserId = typeof userId === "string" ? userId : "";
+    const safeCombinedJson = typeof combinedReportJson === "string" ? combinedReportJson : "";
+    const safeStaticJson = typeof staticReportJson === "string" ? staticReportJson : "";
+    const safeAiJson = typeof aiReportJson === "string" ? aiReportJson : "";
+
+    await pool.query(
+        `INSERT INTO document_reports (
+            project_name,
+            project_id,
+            path,
+            report,
+            chunks_json,
+            segments_json,
+            conversation_id,
+            user_id,
+            generated_at,
+            created_at,
+            updated_at,
+            combined_report_json,
+            static_report_json,
+            ai_report_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            project_id = VALUES(project_id),
+            report = VALUES(report),
+            chunks_json = VALUES(chunks_json),
+            segments_json = VALUES(segments_json),
+            conversation_id = VALUES(conversation_id),
+            user_id = VALUES(user_id),
+            generated_at = VALUES(generated_at),
+            updated_at = VALUES(updated_at),
+            combined_report_json = VALUES(combined_report_json),
+            static_report_json = VALUES(static_report_json),
+            ai_report_json = VALUES(ai_report_json)`,
+        [
+            safeProjectName,
             safeProjectId,
             safePath,
             safeReport,
@@ -1526,6 +1634,34 @@ app.get("/api/projects/:projectId/reports", async (req, res, next) => {
     }
 });
 
+app.get("/api/projects/:projectId/document-reports", async (req, res, next) => {
+    try {
+        const { projectId } = req.params;
+        const projectName = await fetchProjectNameById(projectId);
+        if (!projectName) {
+            res.status(404).json({ message: "Project not found" });
+            return;
+        }
+
+        const [rows] = await pool.query(
+            `SELECT project_name, project_id, path, report, chunks_json, segments_json, conversation_id, user_id, generated_at, created_at, updated_at,
+                    combined_report_json, static_report_json, ai_report_json
+             FROM document_reports
+             WHERE project_name = ?
+             ORDER BY path ASC`,
+            [projectName]
+        );
+
+        res.json({
+            projectId,
+            projectName,
+            reports: rows.map(mapDocumentReportRow)
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 app.post("/api/documents/sql-text", async (req, res, next) => {
     try {
         const { data, base64, name, mime } = req.body || {};
@@ -1737,6 +1873,13 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             return;
         }
 
+        const resolvedProjectName =
+            (typeof projectName === "string" && projectName.trim()) || (await fetchProjectNameById(projectId));
+        if (!resolvedProjectName) {
+            res.status(404).json({ message: "Project not found" });
+            return;
+        }
+
         const [nodeRows] = await pool.query(
             `SELECT node_key, project_id, type, name, path, parent, size, last_modified, mime, is_big
              FROM nodes
@@ -1785,7 +1928,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
         const checksJson = JSON.stringify(enabledChecks, null, 2);
         const statusJson = JSON.stringify(snapshot, null, 2);
         const segmentText = [
-            `專案：${projectName || projectId}`,
+            `專案：${resolvedProjectName}`,
             "",
             "檔案樹：",
             treeMap || "(空)",
@@ -1798,7 +1941,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
         ].join("\n");
 
         const dify = await requestDifyReport({
-            projectName: projectName || projectId,
+            projectName: resolvedProjectName,
             filePath: path,
             content: segmentText,
             userId,
@@ -1871,8 +2014,9 @@ app.post("/api/reports/document-review", async (req, res, next) => {
         const aiReportJson = JSON.stringify({ issues: clonePlainIssueList(difyIssues) }, null, 2);
         const resolvedUserId = typeof userId === "string" ? userId.trim() : "";
 
-        await upsertReport({
+        await upsertDocumentReport({
             projectId,
+            projectName: resolvedProjectName,
             path,
             report: reportString,
             chunks: [],
@@ -1888,6 +2032,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
         const savedAtIso = new Date().toISOString();
         res.json({
             projectId,
+            projectName: resolvedProjectName,
             path,
             report: reportString,
             chunks: [],
