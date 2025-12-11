@@ -3228,10 +3228,10 @@ async function handleSaveRules() {
         riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator.trim() : ""
     }));
 
-    const missingRequired = normalizedRules.find(
+    const missingRequiredRule = normalizedRules.find(
         (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
     );
-    if (missingRequired) {
+    if (missingRequiredRule) {
         ruleSettingsState.message = "請完整填寫規則ID、描述與風險指標";
         return;
     }
@@ -3252,9 +3252,9 @@ async function handleSaveRules() {
         return;
     }
 
-    const missingRequired = aiReviewMissingRequiredPlaceholders.value;
-    if (missingRequired.length) {
-        const missingText = missingRequired.map((entry) => `{{${entry.key}}}`).join("、");
+    const missingRequiredPlaceholders = aiReviewMissingRequiredPlaceholders.value;
+    if (missingRequiredPlaceholders.length) {
+        const missingText = missingRequiredPlaceholders.map((entry) => `{{${entry.key}}}`).join("、");
         aiReviewState.message = `請先插入所有必要占位符：${missingText}`;
         return;
     }
@@ -3293,88 +3293,6 @@ async function loadAiReviewSettingContent(language = settingLanguage.value) {
         safeAlertFail(error);
     } finally {
         aiReviewState.loading = false;
-    }
-}
-
-async function loadDocumentReviewSettingContent() {
-    documentSettingState.loading = true;
-    documentSettingState.message = "";
-    try {
-        const response = await fetchDocumentReviewSetting();
-        const sourceRules = Array.isArray(response?.checks) && response.checks.length
-            ? response.checks
-            : [...DEFAULT_DOCUMENT_RULES];
-        documentSettingState.checks = sourceRules.map((rule, index) => ({
-            localId: rule?.localId || `doc-${Date.now()}-${index}`,
-            key: rule?.key || rule?.ruleId || "",
-            ruleId: rule?.ruleId || "",
-            description: rule?.description || "",
-            enabled: rule?.enabled !== false,
-            riskIndicator: rule?.riskIndicator || ""
-        }));
-        documentSettingState.promptTemplate =
-            typeof response?.promptTemplate === "string" && response.promptTemplate.trim()
-                ? response.promptTemplate
-                : DEFAULT_DOCUMENT_PROMPT;
-        documentSettingState.loaded = true;
-    } catch (error) {
-        documentSettingState.message = error?.message || "載入文件審查設定失敗";
-    } finally {
-        documentSettingState.loading = false;
-    }
-}
-
-async function handleSaveDocumentReviewSetting() {
-    documentSettingState.saving = true;
-    documentSettingState.message = "";
-    try {
-        const normalizedRules = (Array.isArray(documentSettingState.checks)
-            ? documentSettingState.checks
-            : []
-        ).map((rule) => ({
-            key: typeof rule?.key === "string" ? rule.key.trim() : rule?.ruleId || "",
-            ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : "",
-            description: typeof rule?.description === "string" ? rule.description.trim() : "",
-            enabled: Boolean(rule?.enabled),
-            riskIndicator:
-                typeof rule?.riskIndicator === "string" ? rule.riskIndicator.trim() : ""
-        }));
-
-        const missingRequired = normalizedRules.find(
-            (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
-        );
-        if (missingRequired) {
-            documentSettingState.message = "請完整填寫規則ID、描述與風險指標";
-            documentSettingState.saving = false;
-            return;
-        }
-
-        const payload = normalizedRules.filter((rule) =>
-            rule.ruleId || rule.description || rule.riskIndicator
-        );
-
-        const duplicates = new Set();
-        const hasDuplicateRuleId = payload.some((rule) => {
-            if (duplicates.has(rule.ruleId)) return true;
-            duplicates.add(rule.ruleId);
-            return false;
-        });
-        if (hasDuplicateRuleId) {
-            documentSettingState.message = "規則ID 不可重覆";
-            documentSettingState.saving = false;
-            return;
-        }
-
-        await saveDocumentReviewSetting({
-            checks: payload,
-            promptTemplate: documentSettingState.promptTemplate
-        });
-        documentSettingState.message = "文件審查設定已保存";
-        documentSettingState.loaded = true;
-    } catch (error) {
-        documentSettingState.message = error?.message || "保存文件審查設定失敗";
-    } finally {
-        documentSettingState.saving = false;
     }
 }
 
