@@ -3252,16 +3252,31 @@ async function handleSaveRules() {
         return;
     }
 
+    const missingRequired = aiReviewMissingRequiredPlaceholders.value;
+    if (missingRequired.length) {
+        const missingText = missingRequired.map((entry) => `{{${entry.key}}}`).join("、");
+        aiReviewState.message = `請先插入所有必要占位符：${missingText}`;
+        return;
+    }
+
     ruleSettingsState.saving = true;
+    aiReviewState.saving = true;
     ruleSettingsState.message = "";
+    aiReviewState.message = "";
     try {
-        await saveSettingRules(language, payload);
-        ruleSettingsState.message = "規則已保存";
+        await Promise.all([
+            saveSettingRules(language, payload),
+            saveAiReviewSetting(language, activeAiReviewContent.value || "")
+        ]);
+        ruleSettingsState.message = "規則與 AI 模版已保存";
+        aiReviewState.message = "";
         ruleSettingsState.loaded[language] = true;
+        aiReviewState.loaded[language] = true;
     } catch (error) {
         safeAlertFail(error);
     } finally {
         ruleSettingsState.saving = false;
+        aiReviewState.saving = false;
     }
 }
 
@@ -3281,26 +3296,85 @@ async function loadAiReviewSettingContent(language = settingLanguage.value) {
     }
 }
 
-async function handleSaveAiReviewSetting() {
-    const language = availableSettingLanguages.includes(settingLanguage.value)
-        ? settingLanguage.value
-        : "SQL";
-    const missingRequired = aiReviewMissingRequiredPlaceholders.value;
-    if (missingRequired.length) {
-        aiReviewState.message =
-            "請先插入所有必要占位符：" + missingRequired.map((entry) => `{{${entry.key}}}`).join("、");
-        return;
-    }
-    aiReviewState.saving = true;
-    aiReviewState.message = "";
+async function loadDocumentReviewSettingContent() {
+    documentSettingState.loading = true;
+    documentSettingState.message = "";
     try {
-        await saveAiReviewSetting(language, activeAiReviewContent.value || "");
-        aiReviewState.message = "AI 審查設定已保存";
-        aiReviewState.loaded[language] = true;
+        const response = await fetchDocumentReviewSetting();
+        const sourceRules = Array.isArray(response?.checks) && response.checks.length
+            ? response.checks
+            : [...DEFAULT_DOCUMENT_RULES];
+        documentSettingState.checks = sourceRules.map((rule, index) => ({
+            localId: rule?.localId || `doc-${Date.now()}-${index}`,
+            key: rule?.key || rule?.ruleId || "",
+            ruleId: rule?.ruleId || "",
+            description: rule?.description || "",
+            enabled: rule?.enabled !== false,
+            riskIndicator: rule?.riskIndicator || ""
+        }));
+        documentSettingState.promptTemplate =
+            typeof response?.promptTemplate === "string" && response.promptTemplate.trim()
+                ? response.promptTemplate
+                : DEFAULT_DOCUMENT_PROMPT;
+        documentSettingState.loaded = true;
     } catch (error) {
-        safeAlertFail(error);
+        documentSettingState.message = error?.message || "載入文件審查設定失敗";
     } finally {
-        aiReviewState.saving = false;
+        documentSettingState.loading = false;
+    }
+}
+
+async function handleSaveDocumentReviewSetting() {
+    documentSettingState.saving = true;
+    documentSettingState.message = "";
+    try {
+        const normalizedRules = (Array.isArray(documentSettingState.checks)
+            ? documentSettingState.checks
+            : []
+        ).map((rule) => ({
+            key: typeof rule?.key === "string" ? rule.key.trim() : rule?.ruleId || "",
+            ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : "",
+            description: typeof rule?.description === "string" ? rule.description.trim() : "",
+            enabled: Boolean(rule?.enabled),
+            riskIndicator:
+                typeof rule?.riskIndicator === "string" ? rule.riskIndicator.trim() : ""
+        }));
+
+        const missingRequired = normalizedRules.find(
+            (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
+        );
+        if (missingRequired) {
+            documentSettingState.message = "請完整填寫規則ID、描述與風險指標";
+            documentSettingState.saving = false;
+            return;
+        }
+
+        const payload = normalizedRules.filter((rule) =>
+            rule.ruleId || rule.description || rule.riskIndicator
+        );
+
+        const duplicates = new Set();
+        const hasDuplicateRuleId = payload.some((rule) => {
+            if (duplicates.has(rule.ruleId)) return true;
+            duplicates.add(rule.ruleId);
+            return false;
+        });
+        if (hasDuplicateRuleId) {
+            documentSettingState.message = "規則ID 不可重覆";
+            documentSettingState.saving = false;
+            return;
+        }
+
+        await saveDocumentReviewSetting({
+            checks: payload,
+            promptTemplate: documentSettingState.promptTemplate
+        });
+        documentSettingState.message = "文件審查設定已保存";
+        documentSettingState.loaded = true;
+    } catch (error) {
+        documentSettingState.message = error?.message || "保存文件審查設定失敗";
+    } finally {
+        documentSettingState.saving = false;
     }
 }
 
@@ -5094,13 +5168,7 @@ onBeforeUnmount(() => {
                             <button type="button" class="settingsTab" :class="{ active: activeSettingTab === 'rules' }"
                                 @click="activeSettingTab = 'rules'" role="tab"
                                 :aria-selected="activeSettingTab === 'rules'">
-                                規則引擎
-                            </button>
-                            <button type="button" class="settingsTab"
-                                :class="{ active: activeSettingTab === 'documents' }"
-                                @click="activeSettingTab = 'documents'" role="tab"
-                                :aria-selected="activeSettingTab === 'documents'">
-                                文件審查
+                                規則引掌
                             </button>
                             <button type="button" class="settingsTab"
                                 :class="{ active: activeSettingTab === 'documents' }"
@@ -5236,6 +5304,100 @@ onBeforeUnmount(() => {
                             <template v-else-if="activeSettingTab === 'documents'">
                                 <div class="settingsCard">
                                     <div class="settingsActions">
+                                        <p class="settingsStatus" v-if="ruleSettingsState.loading || aiReviewState.loading">
+                                            設定載入中...
+                                        </p>
+                                        <p class="settingsStatus success"
+                                            v-else-if="ruleSettingsState.message || aiReviewState.message">
+                                            {{ ruleSettingsState.message || aiReviewState.message }}
+                                        </p>
+                                        <button type="button" class="btn outline" @click="addRuleRow"
+                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
+                                            新增規則
+                                        </button>
+                                        <button type="button" class="btn" @click="handleSaveRules"
+                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading || aiReviewState.saving || aiReviewState.loading">
+                                            {{ ruleSettingsState.saving ? "保存中..." : "保存設定" }}
+                                        </button>
+                                    </div>
+
+                                    <div class="ruleGrid" role="table" aria-label="文件規則列表">
+                                        <div class="ruleRow ruleRow--header" role="row">
+                                            <div class="ruleCell" role="columnheader">規則 ID</div>
+                                            <div class="ruleCell" role="columnheader">描述</div>
+                                            <div class="ruleCell" role="columnheader">啟用</div>
+                                            <div class="ruleCell" role="columnheader">風險指標</div>
+                                            <div class="ruleCell" role="columnheader">操作</div>
+                                        </div>
+                                        <div v-for="(check, index) in documentSettingState.checks"
+                                            :key="check.localId || check.ruleId || `doc-check-${index}`"
+                                            class="ruleRow" role="row">
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} ID`" placeholder="DOC-001" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.description" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 描述`"
+                                                    :placeholder="ruleDescriptionPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <label class="toggle">
+                                                    <input v-model="check.enabled" type="checkbox" />
+                                                    <span>啟用</span>
+                                                </label>
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.riskIndicator" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 風險指標`"
+                                                    :placeholder="riskIndicatorPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell ruleCell--actions" role="cell">
+                                                <button type="button" class="btn ghost" @click="removeRuleRow(index)"
+                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
+                                                    刪除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
+                                    <div class="aiReviewPlaceholderPanel">
+                                        <div class="aiReviewPlaceholderHeader">
+                                            <p class="aiReviewPlaceholderTitle">可用占位符</p>
+                                            <p class="aiReviewPlaceholderStatusText">{{ aiReviewPlaceholderStatusText }}
+                                            </p>
+                                        </div>
+                                        <div v-for="group in aiReviewPlaceholderPanels" :key="group.key"
+                                            class="aiReviewPlaceholderGroup">
+                                            <p class="aiReviewPlaceholderGroupLabel">{{ group.label }}</p>
+                                            <ul class="aiReviewPlaceholderList">
+                                                <li v-for="placeholder in group.placeholders" :key="placeholder.key"
+                                                    class="aiReviewPlaceholderItem">
+                                                    <button type="button" class="aiReviewPlaceholderButton"
+                                                        :class="{ used: placeholder.used }"
+                                                        :disabled="placeholder.used || aiReviewState.loading || aiReviewState.saving"
+                                                        :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
+                                                        @click="insertAiReviewPlaceholder(placeholder.key)">
+                                                        {{ formatAiReviewPlaceholder(placeholder.key) }}
+                                                    </button>
+                                                    <span class="aiReviewPlaceholderDescription">{{
+                                                        placeholder.description }}</span>
+                                                    <span v-if="placeholder.used"
+                                                        class="aiReviewPlaceholderHint">此占位符已於模版中使用</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <textarea id="aiReviewContent" v-model="activeAiReviewContent"
+                                        class="aiReviewInput" ref="aiReviewInputRef" rows="8"
+                                        :placeholder="aiReviewPlaceholder"
+                                        :disabled="aiReviewState.loading || aiReviewState.saving"></textarea>
+                                </div>
+                            </template>
+                            <template v-else-if="activeSettingTab === 'documents'">
+                                <div class="settingsCard">
+                                    <div class="settingsActions">
                                         <p class="settingsStatus" v-if="documentSettingState.loading">設定載入中...</p>
                                         <p class="settingsStatus success" v-else-if="documentSettingState.message">
                                             {{ documentSettingState.message }}
@@ -5286,45 +5448,6 @@ onBeforeUnmount(() => {
                                                     :disabled="documentSettingState.loading || documentSettingState.saving">
                                                     刪除
                                                 </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
-                                    <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
-                                        class="aiReviewInput" rows="6"
-                                        placeholder="輸入要送給 Dify 的文件檢查提示" :disabled="documentSettingState.loading"></textarea>
-                                </div>
-                            </template>
-                            <template v-else-if="activeSettingTab === 'documents'">
-                                <div class="settingsCard">
-                                    <div class="settingsActions">
-                                        <p class="settingsStatus" v-if="documentSettingState.loading">設定載入中...</p>
-                                        <p class="settingsStatus success" v-else-if="documentSettingState.message">
-                                            {{ documentSettingState.message }}
-                                        </p>
-                                        <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
-                                            :disabled="documentSettingState.saving || documentSettingState.loading">
-                                            {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
-                                        </button>
-                                    </div>
-
-                                    <div class="documentChecks">
-                                        <h4 class="documentChecksTitle">檢查清單</h4>
-                                        <p class="documentChecksHint">
-                                            依需求調整是否啟用或修改描述，AI 會使用此清單檢查專案文件。
-                                        </p>
-                                        <div v-for="(check, index) in documentSettingState.checks"
-                                            :key="check.key || `doc-check-${index}`" class="documentCheckRow">
-                                            <label class="toggle">
-                                                <input v-model="check.enabled" type="checkbox" />
-                                                <span>啟用</span>
-                                            </label>
-                                            <div class="documentCheckFields">
-                                                <input v-model="check.label" type="text" class="ruleInput"
-                                                    :placeholder="`檢查項目 ${index + 1}`" />
-                                                <input v-model="check.description" type="text" class="ruleInput"
-                                                    :placeholder="`說明 ${index + 1}`" />
                                             </div>
                                         </div>
                                     </div>
