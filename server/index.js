@@ -1988,7 +1988,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             summary: [
                 buildSummaryRecord({
                     source: "document_review",
-                    label: "文件AI審查",
+                    label: "文件審查",
                     totalIssues: difyIssues.length,
                     generatedAt
                 })

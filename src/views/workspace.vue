@@ -475,15 +475,6 @@ function handleReportPanelGenerate(project, node) {
     });
 }
 
-function handleDocumentReportGenerate(project) {
-    const delaySelect = isReportToolActive.value;
-    return generateDocumentReview(project, {
-        autoSelect: true,
-        silent: false,
-        delaySelectUntilReady: delaySelect
-    });
-}
-
 const reportPanelConfig = computed(() => {
     const viewMode = isReportToolActive.value ? "reports" : "projects";
     const showProjectActions = isReportToolActive.value;
@@ -504,7 +495,6 @@ const reportPanelConfig = computed(() => {
         toggleNode: toggleReportNode,
         getReportState: getReportStateForFile,
         onGenerate: handleReportPanelGenerate,
-        onGenerateDocument: handleDocumentReportGenerate,
         onSelect: viewMode === "reports" ? selectReport : openProjectFileFromReportTree,
         getStatusLabel,
         onReloadProject: loadReportTreeForProject,
@@ -3782,7 +3772,7 @@ function appendDocumentReviewNode(nodes) {
     if (existing) return nodes;
     const docNode = {
         type: "file",
-        name: "文件AI審查",
+        name: "文件審查",
         path: DOCUMENT_REVIEW_PATH,
         parent: "",
         mime: "application/json",
@@ -5350,6 +5340,8 @@ onBeforeUnmount(() => {
                                                 刪除
                                             </button>
                                         </div>
+                                    </div>
+
                                     </div>
 
                                     </div>
