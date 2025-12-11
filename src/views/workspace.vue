@@ -5,11 +5,17 @@ import { useTreeStore } from "../scripts/composables/useTreeStore.js";
 import { useProjectsStore } from "../scripts/composables/useProjectsStore.js";
 import { useAiAssistant } from "../scripts/composables/useAiAssistant.js";
 import * as fileSystemService from "../scripts/services/fileSystemService.js";
-import { generateReportViaDify, fetchProjectReports } from "../scripts/services/reportService.js";
+import {
+    generateReportViaDify,
+    generateDocumentReviewReport,
+    fetchProjectReports
+} from "../scripts/services/reportService.js";
 import {
     fetchAiReviewSetting,
+    fetchDocumentReviewSetting,
     fetchSettingRules,
     saveAiReviewSetting,
+    saveDocumentReviewSetting,
     saveSettingRules
 } from "../scripts/services/apiService.js";
 import {
@@ -54,6 +60,46 @@ const workspaceLogoModules = import.meta.glob("../assets/InfoMacro_logo.jpg", {
     import: "default"
 });
 const workspaceLogoSrc = Object.values(workspaceLogoModules)[0] ?? "";
+const DOCUMENT_REVIEW_PATH = "__documents__/ai-status.json";
+const DEFAULT_DOCUMENT_PROMPT =
+    "你是一位軟體交付與作業稽核專家，請根據以下樹狀圖與規則引擎清單，輸出 JSON 描述缺漏、風險與改善建議。\n{{content}}";
+const DEFAULT_DOCUMENT_RULES = [
+    {
+        key: "approval_form",
+        ruleId: "DOC-001",
+        description: "是否有提供《演練與投產審批表.docx》",
+        riskIndicator: "高",
+        enabled: true
+    },
+    {
+        key: "test_logs",
+        ruleId: "DOC-002",
+        description: "是否提供測試日誌（log 文件）",
+        riskIndicator: "中",
+        enabled: true
+    },
+    {
+        key: "rollback_script",
+        ruleId: "DOC-003",
+        description: "是否提供回退腳本（rollback 類文件）",
+        riskIndicator: "高",
+        enabled: true
+    },
+    {
+        key: "deployment_guide",
+        ruleId: "DOC-004",
+        description: "是否提供投產指引（guide 類文件）",
+        riskIndicator: "中",
+        enabled: true
+    },
+    {
+        key: "sql_utf8_nobom",
+        ruleId: "DOC-005",
+        description: "SQL 腳本是否為 UTF-8 無 BOM 格式",
+        riskIndicator: "中",
+        enabled: true
+    }
+];
 
 const preview = usePreview();
 
@@ -212,7 +258,10 @@ const workSpaceClass = computed(() => ({
 }));
 const availableSettingLanguages = ["SQL", "Java"];
 const settingLanguage = ref("SQL");
+// Legacy placeholder to avoid runtime reference errors after removing the settings tab toggle
 const activeSettingTab = ref("rules");
+const isAiSettingsCollapsed = ref(true);
+const isDocumentSettingsCollapsed = ref(true);
 const ruleSettingsByLanguage = reactive({ SQL: [], Java: [] });
 const aiReviewContentByLanguage = reactive({ SQL: "", Java: "" });
 const aiReviewInputRef = ref(null);
@@ -227,6 +276,17 @@ const aiReviewState = reactive({
     saving: false,
     message: "",
     loaded: { SQL: false, Java: false }
+});
+const documentSettingState = reactive({
+    loading: false,
+    saving: false,
+    message: "",
+    loaded: false,
+    checks: DEFAULT_DOCUMENT_RULES.map((rule, index) => ({
+        ...rule,
+        localId: `doc-${Date.now()}-${index}`
+    })),
+    promptTemplate: DEFAULT_DOCUMENT_PROMPT
 });
 const activeRuleSettings = computed(() => {
     const language = settingLanguage.value;
@@ -375,6 +435,7 @@ const reportPanelConfig = computed(() => {
         toggleNode: toggleReportNode,
         getReportState: getReportStateForFile,
         onGenerate: generateReportForFile,
+        onGenerateDocument: generateDocumentReview,
         onSelect: viewMode === "reports" ? selectReport : openProjectFileFromReportTree,
         getStatusLabel,
         onReloadProject: loadReportTreeForProject,
@@ -3066,6 +3127,14 @@ function toggleSettingsView() {
     ensureSettingsLoaded();
 }
 
+function toggleAiSettingsCollapsed() {
+    isAiSettingsCollapsed.value = !isAiSettingsCollapsed.value;
+}
+
+function toggleDocumentSettingsCollapsed() {
+    isDocumentSettingsCollapsed.value = !isDocumentSettingsCollapsed.value;
+}
+
 function activateRailTool(tool) {
     if (tool !== "settings") {
         lastNonSettingsTool.value = tool;
@@ -3080,6 +3149,9 @@ function ensureSettingsLoaded(language = settingLanguage.value) {
     }
     if (!aiReviewState.loaded[targetLanguage] && !aiReviewState.loading) {
         loadAiReviewSettingContent(targetLanguage);
+    }
+    if (!documentSettingState.loaded && !documentSettingState.loading) {
+        loadDocumentReviewSettingContent();
     }
 }
 
@@ -3128,6 +3200,26 @@ function removeRuleRow(index) {
     list.splice(index, 1);
 }
 
+function createEmptyDocumentRule() {
+    return {
+        localId: `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        key: "",
+        ruleId: "",
+        description: "",
+        enabled: true,
+        riskIndicator: ""
+    };
+}
+
+function addDocumentRuleRow() {
+    documentSettingState.checks.push(createEmptyDocumentRule());
+}
+
+function removeDocumentRuleRow(index) {
+    if (!Array.isArray(documentSettingState.checks)) return;
+    documentSettingState.checks.splice(index, 1);
+}
+
 async function handleSaveRules() {
     const language = availableSettingLanguages.includes(settingLanguage.value)
         ? settingLanguage.value
@@ -3140,10 +3232,10 @@ async function handleSaveRules() {
         riskIndicator: typeof rule?.riskIndicator === "string" ? rule.riskIndicator.trim() : ""
     }));
 
-    const missingRequired = normalizedRules.find(
+    const missingRequiredRule = normalizedRules.find(
         (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
     );
-    if (missingRequired) {
+    if (missingRequiredRule) {
         ruleSettingsState.message = "請完整填寫規則ID、描述與風險指標";
         return;
     }
@@ -3164,16 +3256,31 @@ async function handleSaveRules() {
         return;
     }
 
+    const missingRequiredPlaceholders = aiReviewMissingRequiredPlaceholders.value;
+    if (missingRequiredPlaceholders.length) {
+        const missingText = missingRequiredPlaceholders.map((entry) => `{{${entry.key}}}`).join("、");
+        aiReviewState.message = `請先插入所有必要占位符：${missingText}`;
+        return;
+    }
+
     ruleSettingsState.saving = true;
+    aiReviewState.saving = true;
     ruleSettingsState.message = "";
+    aiReviewState.message = "";
     try {
-        await saveSettingRules(language, payload);
-        ruleSettingsState.message = "規則已保存";
+        await Promise.all([
+            saveSettingRules(language, payload),
+            saveAiReviewSetting(language, activeAiReviewContent.value || "")
+        ]);
+        ruleSettingsState.message = "規則與 AI 模版已保存";
+        aiReviewState.message = "";
         ruleSettingsState.loaded[language] = true;
+        aiReviewState.loaded[language] = true;
     } catch (error) {
         safeAlertFail(error);
     } finally {
         ruleSettingsState.saving = false;
+        aiReviewState.saving = false;
     }
 }
 
@@ -3193,26 +3300,85 @@ async function loadAiReviewSettingContent(language = settingLanguage.value) {
     }
 }
 
-async function handleSaveAiReviewSetting() {
-    const language = availableSettingLanguages.includes(settingLanguage.value)
-        ? settingLanguage.value
-        : "SQL";
-    const missingRequired = aiReviewMissingRequiredPlaceholders.value;
-    if (missingRequired.length) {
-        aiReviewState.message =
-            "請先插入所有必要占位符：" + missingRequired.map((entry) => `{{${entry.key}}}`).join("、");
-        return;
-    }
-    aiReviewState.saving = true;
-    aiReviewState.message = "";
+async function loadDocumentReviewSettingContent() {
+    documentSettingState.loading = true;
+    documentSettingState.message = "";
     try {
-        await saveAiReviewSetting(language, activeAiReviewContent.value || "");
-        aiReviewState.message = "AI 審查設定已保存";
-        aiReviewState.loaded[language] = true;
+        const response = await fetchDocumentReviewSetting();
+        const sourceRules = Array.isArray(response?.checks) && response.checks.length
+            ? response.checks
+            : [...DEFAULT_DOCUMENT_RULES];
+        documentSettingState.checks = sourceRules.map((rule, index) => ({
+            localId: rule?.localId || `doc-${Date.now()}-${index}`,
+            key: rule?.key || rule?.ruleId || "",
+            ruleId: rule?.ruleId || "",
+            description: rule?.description || "",
+            enabled: rule?.enabled !== false,
+            riskIndicator: rule?.riskIndicator || ""
+        }));
+        documentSettingState.promptTemplate =
+            typeof response?.promptTemplate === "string" && response.promptTemplate.trim()
+                ? response.promptTemplate
+                : DEFAULT_DOCUMENT_PROMPT;
+        documentSettingState.loaded = true;
     } catch (error) {
-        safeAlertFail(error);
+        documentSettingState.message = error?.message || "載入文件審查設定失敗";
     } finally {
-        aiReviewState.saving = false;
+        documentSettingState.loading = false;
+    }
+}
+
+async function handleSaveDocumentReviewSetting() {
+    documentSettingState.saving = true;
+    documentSettingState.message = "";
+    try {
+        const normalizedRules = (Array.isArray(documentSettingState.checks)
+            ? documentSettingState.checks
+            : []
+        ).map((rule) => ({
+            key: typeof rule?.key === "string" ? rule.key.trim() : rule?.ruleId || "",
+            ruleId: typeof rule?.ruleId === "string" ? rule.ruleId.trim() : "",
+            description: typeof rule?.description === "string" ? rule.description.trim() : "",
+            enabled: Boolean(rule?.enabled),
+            riskIndicator:
+                typeof rule?.riskIndicator === "string" ? rule.riskIndicator.trim() : ""
+        }));
+
+        const missingRequired = normalizedRules.find(
+            (rule) => !rule.ruleId || !rule.description || !rule.riskIndicator
+        );
+        if (missingRequired) {
+            documentSettingState.message = "請完整填寫規則ID、描述與風險指標";
+            documentSettingState.saving = false;
+            return;
+        }
+
+        const payload = normalizedRules.filter((rule) =>
+            rule.ruleId || rule.description || rule.riskIndicator
+        );
+
+        const duplicates = new Set();
+        const hasDuplicateRuleId = payload.some((rule) => {
+            if (duplicates.has(rule.ruleId)) return true;
+            duplicates.add(rule.ruleId);
+            return false;
+        });
+        if (hasDuplicateRuleId) {
+            documentSettingState.message = "規則ID 不可重覆";
+            documentSettingState.saving = false;
+            return;
+        }
+
+        await saveDocumentReviewSetting({
+            checks: payload,
+            promptTemplate: documentSettingState.promptTemplate
+        });
+        documentSettingState.message = "文件審查設定已保存";
+        documentSettingState.loaded = true;
+    } catch (error) {
+        documentSettingState.message = error?.message || "保存文件審查設定失敗";
+    } finally {
+        documentSettingState.saving = false;
     }
 }
 
@@ -3491,6 +3657,20 @@ function ensureReportTreeEntry(projectId) {
     return reportTreeCache[key];
 }
 
+function appendDocumentReviewNode(nodes) {
+    const existing = (nodes || []).find((node) => node?.path === DOCUMENT_REVIEW_PATH);
+    if (existing) return nodes;
+    const docNode = {
+        type: "file",
+        name: "文件AI審查",
+        path: DOCUMENT_REVIEW_PATH,
+        parent: "",
+        mime: "application/json",
+        isDocumentReview: true
+    };
+    return Array.isArray(nodes) ? [...nodes, docNode] : [docNode];
+}
+
 function ensureProjectBatchState(projectId) {
     const key = normaliseProjectId(projectId);
     if (!key) return null;
@@ -3757,11 +3937,12 @@ async function loadReportTreeForProject(projectId) {
     entry.error = "";
     try {
         const nodes = await treeStore.loadTreeFromDB(projectId);
-        entry.nodes = nodes;
-        ensureStatesForProject(projectId, nodes);
+        const augmentedNodes = appendDocumentReviewNode(nodes);
+        entry.nodes = augmentedNodes;
+        ensureStatesForProject(projectId, augmentedNodes);
         await hydrateReportsForProject(projectId);
         const nextExpanded = new Set(entry.expandedPaths);
-        for (const node of nodes) {
+        for (const node of augmentedNodes) {
             if (node.type === "dir") {
                 nextExpanded.add(node.path);
             }
@@ -3990,6 +4171,11 @@ async function openProjectFileFromReportTree(projectId, path) {
         targetNode = { type: "file", path, name, mime: "" };
     }
 
+    if (targetNode.isDocumentReview) {
+        selectReport(project.id, targetNode.path);
+        return;
+    }
+
     treeStore.selectTreeNode(path);
     try {
         await treeStore.openNode(targetNode);
@@ -4040,10 +4226,127 @@ async function loadTextContentForNode(project, node) {
     }
 }
 
+async function generateDocumentReview(project, options = {}) {
+    const { autoSelect = true, silent = false } = options;
+    if (!project) {
+        return { status: "skipped" };
+    }
+    const projectId = normaliseProjectId(project.id);
+    const state = ensureFileReportState(projectId, DOCUMENT_REVIEW_PATH);
+    if (!state || state.status === "processing") {
+        return { status: "processing" };
+    }
+
+    state.status = "processing";
+    state.error = "";
+    state.report = "";
+    state.chunks = [];
+    state.segments = [];
+    state.conversationId = "";
+    state.analysis = null;
+    state.issueSummary = null;
+    state.parsedReport = null;
+    state.rawReport = "";
+    state.dify = null;
+    state.dml = null;
+    state.difyErrorMessage = "";
+    state.dmlErrorMessage = "";
+    state.sourceText = "";
+    state.sourceLoaded = false;
+    state.sourceLoading = false;
+    state.sourceError = "";
+    state.combinedReportJson = "";
+    state.staticReportJson = "";
+    state.aiReportJson = "";
+
+    try {
+        const payload = await generateDocumentReviewReport({
+            projectId,
+            projectName: project.name,
+            path: DOCUMENT_REVIEW_PATH
+        });
+
+        const completedAt = payload?.generatedAt ? new Date(payload.generatedAt) : new Date();
+        state.status = "ready";
+        state.updatedAt = completedAt;
+        state.updatedAtDisplay = completedAt.toLocaleString();
+        state.report = payload?.report || "";
+        state.chunks = Array.isArray(payload?.chunks) ? payload.chunks : [];
+        state.segments = Array.isArray(payload?.segments) ? payload.segments : [];
+        state.conversationId = payload?.conversationId || "";
+        state.rawReport = typeof payload?.rawReport === "string" ? payload.rawReport : "";
+        state.dify = normaliseReportObject(payload?.dify) || normaliseReportObject(payload?.analysis?.dify);
+        state.analysis = payload?.analysis || null;
+        state.difyErrorMessage = typeof payload?.difyErrorMessage === "string" ? payload.difyErrorMessage : "";
+        applyAiReviewResultToState(state, payload);
+        state.parsedReport = parseReportJson(state.report);
+        state.issueSummary = computeIssueSummary(state.report, state.parsedReport);
+        normaliseReportAnalysisState(state);
+        updateIssueSummaryTotals(state);
+        state.error = "";
+        state.combinedReportJson = typeof payload?.combinedReportJson === "string" ? payload.combinedReportJson : "";
+        state.staticReportJson = typeof payload?.staticReportJson === "string" ? payload.staticReportJson : "";
+        state.aiReportJson = typeof payload?.aiReportJson === "string" ? payload.aiReportJson : "";
+        if (!state.sourceText && state.segments.length) {
+            state.sourceText = typeof state.segments[0] === "string" ? state.segments[0] : "";
+            state.sourceLoaded = Boolean(state.sourceText);
+        }
+
+        if (autoSelect) {
+            activeReportTarget.value = {
+                projectId,
+                path: DOCUMENT_REVIEW_PATH
+            };
+        }
+
+        return { status: "ready" };
+    } catch (error) {
+        const message = error?.message ? String(error.message) : String(error);
+        state.status = "error";
+        state.error = message;
+        state.report = "";
+        state.chunks = [];
+        state.segments = [];
+        state.conversationId = "";
+        state.analysis = null;
+        state.issueSummary = null;
+        state.parsedReport = null;
+        state.rawReport = "";
+        state.dify = null;
+        state.dml = null;
+        state.difyErrorMessage = "";
+        state.dmlErrorMessage = "";
+        state.sourceLoading = false;
+        state.sourceLoaded = false;
+        state.combinedReportJson = "";
+        state.staticReportJson = "";
+        state.aiReportJson = "";
+        const now = new Date();
+        state.updatedAt = now;
+        state.updatedAtDisplay = now.toLocaleString();
+
+        if (autoSelect) {
+            activeReportTarget.value = {
+                projectId,
+                path: DOCUMENT_REVIEW_PATH
+            };
+        }
+
+        if (!silent) {
+            alert(`生成文件審查報告失敗：${message}`);
+        }
+
+        return { status: "error", error };
+    }
+}
+
 async function generateReportForFile(project, node, options = {}) {
     const { autoSelect = true, silent = false } = options;
     if (!project || !node || node.type !== "file") {
         return { status: "skipped" };
+    }
+    if (node.isDocumentReview) {
+        return await generateDocumentReview(project, { autoSelect, silent });
     }
     const projectId = normaliseProjectId(project.id);
     const state = ensureFileReportState(projectId, node.path);
@@ -4202,7 +4505,7 @@ async function generateProjectReports(project) {
         return;
     }
 
-    const nodes = collectFileNodes(entry.nodes);
+    const nodes = collectFileNodes(entry.nodes).filter((node) => !node.isDocumentReview);
     if (!nodes.length) {
         alert("此專案尚未索引可供審查的檔案");
         return;
@@ -4358,7 +4661,11 @@ watch(
                 throw new Error("找不到對應的檔案");
             }
             const file = await fileHandle.getFile();
-            const text = await file.text();
+            const text = await preview.readTextContent(file, {
+                name: report.path,
+                mime: file.type || "",
+                maxBytes: preview.MAX_TEXT_BYTES * 4
+            });
             state.sourceText = typeof text === "string" ? text : "";
             state.sourceLoaded = true;
             state.sourceError = "";
@@ -4783,37 +5090,34 @@ onBeforeUnmount(() => {
                             </button>
                         </div>
 
-                        <div class="settingsTabs" role="tablist" aria-label="設定分頁">
-                            <button type="button" class="settingsTab" :class="{ active: activeSettingTab === 'rules' }"
-                                @click="activeSettingTab = 'rules'" role="tab"
-                                :aria-selected="activeSettingTab === 'rules'">
-                                規則引擎
-                            </button>
-                            <button type="button" class="settingsTab"
-                                :class="{ active: activeSettingTab === 'ai-review' }"
-                                @click="activeSettingTab = 'ai-review'" role="tab"
-                                :aria-selected="activeSettingTab === 'ai-review'">
-                                AI 審查
-                            </button>
-                        </div>
-
                         <div class="settingsContent">
-                            <template v-if="activeSettingTab === 'rules'">
-                                <div class="settingsCard">
+                            <div class="settingsCard">
+                                <button type="button" class="settingsCollapseHeader"
+                                    :aria-expanded="!isAiSettingsCollapsed" @click="toggleAiSettingsCollapsed">
+                                    <div class="settingsCollapseTitle">審查設定</div>
+                                    <span class="settingsCollapseHint">{{
+                                        isAiSettingsCollapsed ? "審查設定（已拆疊）" : "審查設定（展開中）" }}</span>
+                                    <span class="settingsCollapseIcon" aria-hidden="true">{{
+                                        isAiSettingsCollapsed ? "＋" : "－" }}</span>
+                                </button>
+
+                                <div class="settingsCollapseContent" v-show="!isAiSettingsCollapsed">
                                     <div class="settingsActions">
-                                        <p class="settingsStatus" v-if="ruleSettingsState.loading">
-                                            規則載入中...
+                                        <p class="settingsStatus"
+                                            v-if="ruleSettingsState.loading || aiReviewState.loading">
+                                            設定載入中...
                                         </p>
-                                        <p class="settingsStatus success" v-else-if="ruleSettingsState.message">
-                                            {{ ruleSettingsState.message }}
+                                        <p class="settingsStatus success"
+                                            v-else-if="ruleSettingsState.message || aiReviewState.message">
+                                            {{ ruleSettingsState.message || aiReviewState.message }}
                                         </p>
                                         <button type="button" class="btn outline" @click="addRuleRow"
-                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving">
+                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
                                             新增規則
                                         </button>
                                         <button type="button" class="btn" @click="handleSaveRules"
-                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading">
-                                            {{ ruleSettingsState.saving ? "保存中..." : "保存規則" }}
+                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading || aiReviewState.saving || aiReviewState.loading">
+                                            {{ ruleSettingsState.saving ? "保存中..." : "保存設定" }}
                                         </button>
                                     </div>
 
@@ -4849,17 +5153,13 @@ onBeforeUnmount(() => {
                                             </div>
                                             <div class="ruleCell ruleCell--actions" role="cell">
                                                 <button type="button" class="btn ghost" @click="removeRuleRow(index)"
-                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving">
+                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
                                                     刪除
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </template>
 
-                            <template v-else>
-                                <div class="settingsCard">
                                     <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
                                     <div class="aiReviewPlaceholderPanel">
                                         <div class="aiReviewPlaceholderHeader">
@@ -4875,7 +5175,7 @@ onBeforeUnmount(() => {
                                                     class="aiReviewPlaceholderItem">
                                                     <button type="button" class="aiReviewPlaceholderButton"
                                                         :class="{ used: placeholder.used }"
-                                                        :disabled="placeholder.used || aiReviewState.loading"
+                                                        :disabled="placeholder.used || aiReviewState.loading || aiReviewState.saving"
                                                         :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
                                                         @click="insertAiReviewPlaceholder(placeholder.key)">
                                                         {{ formatAiReviewPlaceholder(placeholder.key) }}
@@ -4888,22 +5188,87 @@ onBeforeUnmount(() => {
                                             </ul>
                                         </div>
                                     </div>
-                                    <textarea id="aiReviewContent" v-model="activeAiReviewContent" class="aiReviewInput"
-                                        ref="aiReviewInputRef" rows="8" :placeholder="aiReviewPlaceholder"
-                                        :disabled="aiReviewState.loading"></textarea>
+                                    <textarea id="aiReviewContent" v-model="activeAiReviewContent"
+                                        class="aiReviewInput" ref="aiReviewInputRef" rows="8"
+                                        :placeholder="aiReviewPlaceholder"
+                                        :disabled="aiReviewState.loading || aiReviewState.saving"></textarea>
+                                </div>
+                            </div>
 
+                            <div class="settingsCard">
+                                <button type="button" class="settingsCollapseHeader"
+                                    :aria-expanded="!isDocumentSettingsCollapsed"
+                                    @click="toggleDocumentSettingsCollapsed">
+                                    <div class="settingsCollapseTitle">文件掃描設定</div>
+                                    <span class="settingsCollapseHint">{{
+                                        isDocumentSettingsCollapsed ? "文件掃描設定（已拆疊）" : "文件掃描設定（展開中）" }}</span>
+                                    <span class="settingsCollapseIcon" aria-hidden="true">{{
+                                        isDocumentSettingsCollapsed ? "＋" : "－" }}</span>
+                                </button>
+
+                                <div class="settingsCollapseContent" v-show="!isDocumentSettingsCollapsed">
                                     <div class="settingsActions">
-                                        <p class="settingsStatus" v-if="aiReviewState.loading">設定載入中...</p>
-                                        <p class="settingsStatus success" v-else-if="aiReviewState.message">
-                                            {{ aiReviewState.message }}
+                                        <p class="settingsStatus" v-if="documentSettingState.loading">設定載入中...</p>
+                                        <p class="settingsStatus success" v-else-if="documentSettingState.message">
+                                            {{ documentSettingState.message }}
                                         </p>
-                                        <button type="button" class="btn" @click="handleSaveAiReviewSetting"
-                                            :disabled="aiReviewState.saving || aiReviewState.loading">
-                                            {{ aiReviewState.saving ? "保存中..." : "保存 AI 設定" }}
+                                        <button type="button" class="btn outline" @click="addDocumentRuleRow"
+                                            :disabled="documentSettingState.loading || documentSettingState.saving">
+                                            新增規則
+                                        </button>
+                                        <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
+                                            :disabled="documentSettingState.saving || documentSettingState.loading">
+                                            {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
                                         </button>
                                     </div>
+
+                                    <div class="ruleGrid" role="table" aria-label="文件規則列表">
+                                        <div class="ruleRow ruleRow--header" role="row">
+                                            <div class="ruleCell" role="columnheader">規則 ID</div>
+                                            <div class="ruleCell" role="columnheader">描述</div>
+                                            <div class="ruleCell" role="columnheader">啟用</div>
+                                            <div class="ruleCell" role="columnheader">風險指標</div>
+                                            <div class="ruleCell" role="columnheader">操作</div>
+                                        </div>
+                                        <div v-for="(check, index) in documentSettingState.checks"
+                                            :key="check.localId || check.ruleId || `doc-check-${index}`"
+                                            class="ruleRow" role="row">
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} ID`" placeholder="DOC-001" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.description" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 描述`"
+                                                    :placeholder="ruleDescriptionPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <label class="toggle">
+                                                    <input v-model="check.enabled" type="checkbox" />
+                                                    <span>啟用</span>
+                                                </label>
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.riskIndicator" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 風險指標`"
+                                                    :placeholder="riskIndicatorPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell ruleCell--actions" role="cell">
+                                                <button type="button" class="btn ghost" @click="removeDocumentRuleRow(index)"
+                                                    :disabled="documentSettingState.loading || documentSettingState.saving">
+                                                    刪除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
+                                    <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
+                                        class="aiReviewInput" rows="6"
+                                        placeholder="輸入要送給 Dify 的文件檢查提示"
+                                        :disabled="documentSettingState.loading"></textarea>
                                 </div>
-                            </template>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -5525,30 +5890,6 @@ body,
     justify-self: end;
 }
 
-.settingsTabs {
-    display: flex;
-    gap: 8px;
-    border-bottom: 1px solid #d7deea;
-    padding-bottom: 4px;
-}
-
-.settingsTab {
-    padding: 8px 14px;
-    border-radius: 10px;
-    border: 1px solid #cbd5e1;
-    background: linear-gradient(135deg, #eef2fb, #f9fbff);
-    color: #1f2937;
-    cursor: pointer;
-    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.08);
-}
-
-.settingsTab.active {
-    background: linear-gradient(135deg, #dce8ff, #e9f3ff);
-    border-color: #93c5fd;
-    color: #0f172a;
-}
-
 .settingsContent {
     display: flex;
     flex-direction: column;
@@ -5564,6 +5905,43 @@ body,
     flex-direction: column;
     gap: 12px;
     box-shadow: 0 8px 16px rgba(15, 23, 42, 0.06);
+}
+
+.settingsCollapseHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+    width: 100%;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #0f172a;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.settingsCollapseTitle {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.settingsCollapseHint {
+    margin-left: auto;
+    color: #475569;
+    font-size: 13px;
+}
+
+.settingsCollapseIcon {
+    font-size: 16px;
+    color: #0f172a;
+}
+
+.settingsCollapseContent {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .settingsActions {
@@ -5645,6 +6023,42 @@ body,
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.documentChecks {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.documentChecksTitle {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.documentChecksHint {
+    margin: 0 0 4px;
+    color: var(--panel-muted);
+    font-size: 12px;
+}
+
+.documentCheckRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    background: var(--panel-surface);
+}
+
+.documentCheckFields {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .aiReviewPlaceholderHeader {
