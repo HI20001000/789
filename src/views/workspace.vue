@@ -258,6 +258,8 @@ const workSpaceClass = computed(() => ({
 }));
 const availableSettingLanguages = ["SQL", "Java"];
 const settingLanguage = ref("SQL");
+// Legacy placeholder to avoid runtime reference errors after removing the settings tab toggle
+const activeSettingTab = ref("rules");
 const ruleSettingsByLanguage = reactive({ SQL: [], Java: [] });
 const aiReviewContentByLanguage = reactive({ SQL: "", Java: "" });
 const rulePanelMode = ref("rules");
@@ -5228,51 +5230,6 @@ onBeforeUnmount(() => {
                                             </button>
                                         </div>
                                     </div>
-
-                                    <div class="ruleGrid" role="table" aria-label="文件規則列表">
-                                        <div class="ruleRow ruleRow--header" role="row">
-                                            <div class="ruleCell" role="columnheader">規則 ID</div>
-                                            <div class="ruleCell" role="columnheader">描述</div>
-                                            <div class="ruleCell" role="columnheader">啟用</div>
-                                            <div class="ruleCell" role="columnheader">風險指標</div>
-                                            <div class="ruleCell" role="columnheader">操作</div>
-                                        </div>
-                                        <div v-for="(check, index) in documentSettingState.checks"
-                                            :key="check.localId || check.ruleId || `doc-check-${index}`"
-                                            class="ruleRow" role="row">
-                                            <div class="ruleCell" role="cell">
-                                                <input v-model="check.ruleId" type="text" class="ruleInput"
-                                                    :aria-label="`文件規則 ${index + 1} ID`" placeholder="DOC-001" />
-                                            </div>
-                                            <div class="ruleCell" role="cell">
-                                                <input v-model="check.description" type="text" class="ruleInput"
-                                                    :aria-label="`文件規則 ${index + 1} 描述`"
-                                                    :placeholder="ruleDescriptionPlaceholder" />
-                                            </div>
-                                            <div class="ruleCell" role="cell">
-                                                <label class="toggle">
-                                                    <input v-model="check.enabled" type="checkbox" />
-                                                    <span>啟用</span>
-                                                </label>
-                                            </div>
-                                            <div class="ruleCell" role="cell">
-                                                <input v-model="check.riskIndicator" type="text" class="ruleInput"
-                                                    :aria-label="`文件規則 ${index + 1} 風險指標`"
-                                                    :placeholder="riskIndicatorPlaceholder" />
-                                            </div>
-                                            <div class="ruleCell ruleCell--actions" role="cell">
-                                                <button type="button" class="btn ghost" @click="removeDocumentRuleRow(index)"
-                                                    :disabled="documentSettingState.loading || documentSettingState.saving">
-                                                    刪除
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
-                                    <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
-                                        class="aiReviewInput" rows="6"
-                                        placeholder="輸入要送給 Dify 的文件檢查提示" :disabled="documentSettingState.loading"></textarea>
                                 </div>
 
                                 <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
