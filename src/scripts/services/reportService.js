@@ -151,6 +151,14 @@ export async function generateReportViaDify(payload) {
     return await postJson("/reports/dify", enrichedPayload);
 }
 
+export async function generateDocumentReviewReport(payload) {
+    const enrichedPayload = {
+        ...payload,
+        userId: payload?.userId || readReportUserId()
+    };
+    return await postJson("/reports/document-review", enrichedPayload);
+}
+
 export async function fetchProjectReports(projectId) {
     if (!projectId) return [];
     const encodedId = encodeURIComponent(projectId);
@@ -172,5 +180,6 @@ export async function fetchProjectReports(projectId) {
 
 export default {
     generateReportViaDify,
+    generateDocumentReviewReport,
     fetchProjectReports
 };
