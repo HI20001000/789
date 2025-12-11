@@ -290,6 +290,7 @@ const documentSettingState = reactive({
     })),
     promptTemplate: DEFAULT_DOCUMENT_PROMPT
 });
+const documentPromptInputRef = ref(null);
 const activeRuleSettings = computed(() => {
     const language = settingLanguage.value;
     if (!Array.isArray(ruleSettingsByLanguage[language])) {
@@ -316,6 +317,7 @@ const aiReviewPlaceholder = computed(() =>
         ? "輸入要送給 Dify 的 SQL 審查樣板"
         : "輸入 Java AI 審查時要傳送的程式碼範本"
 );
+const documentPromptPlaceholder = "輸入要送給 Dify 的文件檢查提示";
 const aiReviewPlaceholders = [
     { key: "project_name", label: "專案名稱", description: "專案名稱", group: "basic", required: true },
     { key: "file_path", label: "檔案路徑", description: "檔案路徑", group: "basic", required: true },
@@ -385,6 +387,52 @@ const aiReviewMissingRequiredPlaceholders = computed(() =>
 const aiReviewPlaceholderStatusText = computed(() => {
     if (aiReviewMissingRequiredPlaceholders.value.length) {
         const missing = aiReviewMissingRequiredPlaceholders.value
+            .map((entry) => `{{${entry.key}}}`)
+            .join("、");
+        return `請插入必要占位符：${missing}`;
+    }
+    return "所有必填占位符已插入，可自由加入可選欄位。";
+});
+const documentPromptPlaceholders = [
+    { key: "file_name", label: "檔案名稱", description: "目前掃描的文件名稱", group: "basic", required: true },
+    { key: "rule_set", label: "規則集", description: "文件掃描規則清單", group: "basic", required: true },
+    {
+        key: "project_tree",
+        label: "項目樹級結構",
+        description: "專案目錄的樹狀結構（含父子層級）",
+        group: "basic",
+        required: true
+    }
+];
+const documentPromptPlaceholderGroups = [{ key: "basic", label: "基本占位符" }];
+const documentPromptPlaceholderUsage = computed(() => {
+    const text = typeof documentSettingState.promptTemplate === "string" ? documentSettingState.promptTemplate : "";
+    const matches = text.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g);
+    const tokens = new Set();
+    for (const match of matches) {
+        const token = match?.[1];
+        if (token) {
+            tokens.add(token);
+        }
+    }
+    return tokens;
+});
+const documentPromptPlaceholderPanels = computed(() =>
+    documentPromptPlaceholderGroups.map((group) => ({
+        ...group,
+        placeholders: documentPromptPlaceholders
+            .filter((entry) => entry.group === group.key)
+            .map((entry) => ({ ...entry, used: documentPromptPlaceholderUsage.value.has(entry.key) }))
+    }))
+);
+const documentPromptMissingRequiredPlaceholders = computed(() =>
+    documentPromptPlaceholders.filter(
+        (entry) => entry.required && !documentPromptPlaceholderUsage.value.has(entry.key)
+    )
+);
+const documentPromptPlaceholderStatusText = computed(() => {
+    if (documentPromptMissingRequiredPlaceholders.value.length) {
+        const missing = documentPromptMissingRequiredPlaceholders.value
             .map((entry) => `{{${entry.key}}}`)
             .join("、");
         return `請插入必要占位符：${missing}`;
@@ -3452,6 +3500,36 @@ function formatAiReviewPlaceholder(key) {
     return key ? `{{${key}}}` : "";
 }
 
+function insertDocumentPromptPlaceholder(key) {
+    if (!key) return;
+    if (documentPromptPlaceholderUsage.value.has(key)) {
+        documentSettingState.message = `{{${key}}} 已於模版中使用`;
+        return;
+    }
+    const placeholder = `{{${key}}}`;
+    const current =
+        typeof documentSettingState.promptTemplate === "string" ? documentSettingState.promptTemplate : "";
+    const target = documentPromptInputRef.value;
+    if (target && typeof target.selectionStart === "number" && typeof target.selectionEnd === "number") {
+        const { selectionStart, selectionEnd } = target;
+        documentSettingState.promptTemplate =
+            current.slice(0, selectionStart) + placeholder + current.slice(selectionEnd, current.length);
+        nextTick(() => {
+            const caret = selectionStart + placeholder.length;
+            target.setSelectionRange(caret, caret);
+            target.focus();
+        });
+    } else {
+        const prefix = current && !current.endsWith("\n") ? "\n" : "";
+        documentSettingState.promptTemplate = `${current}${prefix}${placeholder}`;
+    }
+    documentSettingState.message = `${placeholder} 已插入`;
+}
+
+function formatDocumentPromptPlaceholder(key) {
+    return key ? `{{${key}}}` : "";
+}
+
 function normaliseProjectId(projectId) {
     if (projectId === null || projectId === undefined) return "";
     return String(projectId);
@@ -5371,9 +5449,35 @@ onBeforeUnmount(() => {
                                     </div>
 
                                     <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
+                                    <div class="aiReviewPlaceholderPanel">
+                                        <div class="aiReviewPlaceholderHeader">
+                                            <p class="aiReviewPlaceholderTitle">可用占位符</p>
+                                            <p class="aiReviewPlaceholderStatusText">
+                                                {{ documentPromptPlaceholderStatusText }}
+                                            </p>
+                                        </div>
+                                        <div v-for="group in documentPromptPlaceholderPanels" :key="group.key"
+                                            class="aiReviewPlaceholderGroup">
+                                            <p class="aiReviewPlaceholderGroupLabel">{{ group.label }}</p>
+                                            <ul class="aiReviewPlaceholderList">
+                                                <li v-for="placeholder in group.placeholders" :key="placeholder.key"
+                                                    class="aiReviewPlaceholderItem">
+                                                    <button type="button" class="aiReviewPlaceholderButton"
+                                                        :class="{ used: placeholder.used }"
+                                                        :disabled="placeholder.used || documentSettingState.loading || documentSettingState.saving"
+                                                        :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
+                                                        @click="insertDocumentPromptPlaceholder(placeholder.key)">
+                                                        {{ formatDocumentPromptPlaceholder(placeholder.key) }}
+                                                    </button>
+                                                    <span class="aiReviewPlaceholderDescription">{{ placeholder.description }}</span>
+                                                    <span v-if="placeholder.used" class="aiReviewPlaceholderHint">此占位符已於模版中使用</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
                                     <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
-                                        class="aiReviewInput" rows="6"
-                                        placeholder="輸入要送給 Dify 的文件檢查提示"
+                                        class="aiReviewInput" rows="6" ref="documentPromptInputRef"
+                                        :placeholder="documentPromptPlaceholder"
                                         :disabled="documentSettingState.loading"></textarea>
                                 </div>
                             </div>
