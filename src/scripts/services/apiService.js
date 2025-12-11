@@ -85,6 +85,14 @@ export async function saveAiReviewSetting(language, codeBlock) {
     return await request("/settings/ai-review", { method: "POST", body: { language, codeBlock } });
 }
 
+export async function fetchDocumentReviewSetting() {
+    return await request(`/settings/document-review`);
+}
+
+export async function saveDocumentReviewSetting(payload) {
+    return await request(`/settings/document-review`, { method: "POST", body: payload });
+}
+
 export async function extractSqlFromDocument(payload) {
     return await request("/documents/sql-text", { method: "POST", body: payload });
 }
@@ -102,6 +110,8 @@ const apiService = {
     saveSettingRules,
     fetchAiReviewSetting,
     saveAiReviewSetting,
+    fetchDocumentReviewSetting,
+    saveDocumentReviewSetting,
     extractSqlFromDocument
 };
 

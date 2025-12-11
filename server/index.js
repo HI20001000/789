@@ -280,6 +280,189 @@ function mapAiReviewSettingRow(row) {
     };
 }
 
+function normaliseDocumentChecks(checks) {
+    const base = Array.isArray(checks) ? checks : [];
+    const merged = new Map(DEFAULT_DOCUMENT_RULES.map((entry) => [entry.ruleId, { ...entry }]));
+    for (const entry of base) {
+        if (!entry || typeof entry !== "object") continue;
+        const ruleIdRaw =
+            typeof entry.ruleId === "string" && entry.ruleId.trim()
+                ? entry.ruleId.trim()
+                : typeof entry.key === "string"
+                ? entry.key.trim()
+                : typeof entry.label === "string"
+                ? entry.label.trim()
+                : "";
+        if (!ruleIdRaw) continue;
+        const current = merged.get(ruleIdRaw) || { ruleId: ruleIdRaw };
+        merged.set(ruleIdRaw, {
+            ...current,
+            ruleId: ruleIdRaw,
+            key:
+                typeof entry.key === "string" && entry.key.trim()
+                    ? entry.key.trim()
+                    : current.key || ruleIdRaw,
+            description:
+                typeof entry.description === "string" && entry.description.trim()
+                    ? entry.description.trim()
+                    : current.description || "",
+            enabled: entry.enabled === undefined ? current.enabled !== false : Boolean(entry.enabled),
+            riskIndicator:
+                typeof entry.riskIndicator === "string" && entry.riskIndicator.trim()
+                    ? entry.riskIndicator.trim()
+                    : typeof entry.risk === "string" && entry.risk.trim()
+                    ? entry.risk.trim()
+                    : current.riskIndicator || ""
+        });
+    }
+    return Array.from(merged.values());
+}
+
+function mapDocumentReviewSettingRow(row) {
+    let parsedChecks = [];
+    try {
+        const parsed = JSON.parse(row.checks_json || "");
+        if (Array.isArray(parsed)) {
+            parsedChecks = parsed;
+        }
+    } catch (_error) {
+        parsedChecks = [];
+    }
+    const promptTemplate =
+        typeof row.prompt_template === "string" && row.prompt_template.trim()
+            ? row.prompt_template
+            : DEFAULT_DOCUMENT_PROMPT_TEMPLATE;
+    return {
+        id: Number(row.id) || 0,
+        checks: normaliseDocumentChecks(parsedChecks),
+        promptTemplate,
+        createdAt: toIsoString(row.created_at)
+    };
+}
+
+function buildDocumentTreeMap(nodes, { maxEntries = 800 } = {}) {
+    const sorted = Array.isArray(nodes) ? [...nodes] : [];
+    sorted.sort((a, b) => (a?.path || "").localeCompare(b?.path || ""));
+    const lines = [];
+    for (let i = 0; i < sorted.length; i += 1) {
+        const node = sorted[i];
+        if (i >= maxEntries) {
+            lines.push(`... (${sorted.length - i} more entries omitted)`);
+            break;
+        }
+        const depth = (node?.path || "").split("/").filter(Boolean).length - 1;
+        const indent = depth > 0 ? "  ".repeat(depth) : "";
+        const icon = node?.type === "dir" ? "📂" : "📄";
+        const label = typeof node?.name === "string" && node.name.trim() ? node.name : node?.path || "";
+        lines.push(`${indent}${icon} ${label}`.trimEnd());
+    }
+    return lines.join("\n");
+}
+
+async function loadDocumentReviewSetting() {
+    const [rows] = await pool.query(
+        `SELECT id, checks_json, prompt_template, created_at
+         FROM setting_document_review
+         ORDER BY id DESC
+         LIMIT 1`
+    );
+    const record = rows?.[0];
+    if (record) {
+        return mapDocumentReviewSettingRow(record);
+    }
+    return {
+        id: null,
+        checks: normaliseDocumentChecks(DEFAULT_DOCUMENT_RULES),
+        promptTemplate: DEFAULT_DOCUMENT_PROMPT_TEMPLATE,
+        createdAt: null
+    };
+}
+
+function matchNodesByKeywords(nodes, keywords, { extensions = [] } = {}) {
+    const keyList = (keywords || []).map((word) => (typeof word === "string" ? word.toLowerCase() : "")).filter(Boolean);
+    const extList = (extensions || []).map((ext) => (typeof ext === "string" ? ext.toLowerCase() : "")).filter(Boolean);
+    const matches = [];
+    for (const node of nodes || []) {
+        if (!node || node.type !== "file") continue;
+        const name = typeof node.name === "string" ? node.name.toLowerCase() : "";
+        const path = typeof node.path === "string" ? node.path : "";
+        if (extList.some((ext) => name.endsWith(ext))) {
+            matches.push(path || node.name || "");
+            continue;
+        }
+        if (keyList.some((keyword) => name.includes(keyword))) {
+            matches.push(path || node.name || "");
+        }
+    }
+    return matches;
+}
+
+function buildDocumentStatusSnapshot(nodes, checks, sqlFilesMeta = []) {
+    const enabledChecks = normaliseDocumentChecks(checks);
+    const statusEntries = [];
+    const fileNodes = (nodes || []).filter((node) => node?.type === "file");
+
+    for (const check of enabledChecks) {
+        const ruleKey = check.key || check.ruleId;
+        const entry = {
+            key: ruleKey,
+            ruleId: check.ruleId,
+            description: check.description,
+            enabled: check.enabled !== false,
+            riskIndicator: check.riskIndicator || "",
+            matches: [],
+            status: "unknown"
+        };
+        switch (ruleKey) {
+            case "approval_form":
+                entry.matches = matchNodesByKeywords(fileNodes, ["演練與投產審批表", "審批表", "审批表"], {
+                    extensions: [".doc", ".docx"]
+                });
+                entry.status = entry.matches.length ? "found" : "missing";
+                break;
+            case "test_logs":
+                entry.matches = matchNodesByKeywords(fileNodes, ["log"], { extensions: [".log"] });
+                entry.status = entry.matches.length ? "found" : "missing";
+                break;
+            case "rollback_script":
+                entry.matches = matchNodesByKeywords(fileNodes, ["rollback", "回退"], {
+                    extensions: [".sql", ".sh", ".bat", ".ps1"]
+                });
+                entry.status = entry.matches.length ? "found" : "missing";
+                break;
+            case "deployment_guide":
+                entry.matches = matchNodesByKeywords(fileNodes, ["guide", "指引", "說明", "说明", "manual"], {
+                    extensions: [".md", ".doc", ".docx", ".pdf"]
+                });
+                entry.status = entry.matches.length ? "found" : "missing";
+                break;
+            case "sql_utf8_nobom": {
+                const bomDetected = sqlFilesMeta.filter((item) => item?.hasBom);
+                entry.matches = sqlFilesMeta.map((item) => item?.path || "");
+                entry.details = {
+                    checked: sqlFilesMeta.length,
+                    bomDetected: bomDetected.map((item) => item?.path || ""),
+                    missingContent: sqlFilesMeta.filter((item) => item && item.stored === false).map((item) => item.path)
+                };
+                entry.status = sqlFilesMeta.length === 0 ? "not_found" : bomDetected.length ? "bom_detected" : "ok";
+                break;
+            }
+            default:
+                entry.status = "unknown";
+        }
+        statusEntries.push(entry);
+    }
+
+    const snapshot = {
+        total_nodes: nodes?.length || 0,
+        total_files: fileNodes.length,
+        sql_files: sqlFilesMeta,
+        checks: statusEntries
+    };
+
+    return { enabledChecks, statusEntries, snapshot };
+}
+
 function clonePlainSnapshotList(entries) {
     if (!Array.isArray(entries)) {
         return [];
@@ -298,6 +481,49 @@ const EMPTY_ISSUES_JSON = JSON.stringify({ issues: [] }, null, 2);
 const EMPTY_COMBINED_REPORT_JSON = JSON.stringify({ summary: [], issues: [] }, null, 2);
 const JAVA_FILE_EXTENSION = ".java";
 const JAVA_STATIC_SUMMARY_MESSAGE = "Java 檔案僅支援 AI 審查流程。";
+const DOCUMENT_REVIEW_PATH = "__documents__/ai-status.json";
+const DEFAULT_DOCUMENT_PROMPT_TEMPLATE =
+    "你是一位軟體交付與作業稽核專家，請根據以下的專案檔案樹及規則引擎清單，評估必備交付物是否齊全。\n" +
+    "請逐一檢查規則並輸出 JSON，至少包含 issues (每個問題需描述缺漏或風險與改善建議) 及 summary (總結風險與結論)。\n" +
+    "回覆務必使用繁體中文，並以 JSON 物件表示，缺少的項目請列出問題與建議。\n" +
+    "以下為專案資料：\n{{content}}";
+const DEFAULT_DOCUMENT_RULES = [
+    {
+        key: "approval_form",
+        ruleId: "DOC-001",
+        description: "是否有提供《演練與投產審批表.docx》",
+        riskIndicator: "高",
+        enabled: true
+    },
+    {
+        key: "test_logs",
+        ruleId: "DOC-002",
+        description: "是否提供測試日誌（log 文件）",
+        riskIndicator: "中",
+        enabled: true
+    },
+    {
+        key: "rollback_script",
+        ruleId: "DOC-003",
+        description: "是否提供回退腳本（rollback 類文件）",
+        riskIndicator: "高",
+        enabled: true
+    },
+    {
+        key: "deployment_guide",
+        ruleId: "DOC-004",
+        description: "是否提供投產指引（guide 類文件）",
+        riskIndicator: "中",
+        enabled: true
+    },
+    {
+        key: "sql_utf8_nobom",
+        ruleId: "DOC-005",
+        description: "SQL 腳本是否為 UTF-8 無 BOM 格式",
+        riskIndicator: "中",
+        enabled: true
+    }
+];
 
 function resolveAggregateMessage(aggregate) {
     if (!aggregate || typeof aggregate !== "object") {
@@ -1335,7 +1561,7 @@ app.post("/api/reports/dify", async (req, res, next) => {
         resolvedUserId = typeof userId === "string" ? userId.trim() : "";
         if (isSqlPath(path)) {
             if (REPORT_DEBUG_LOGS) {
-                console.log(`[sql] Running static SQL analysis project=${projectId} path=${path}`);
+                console.log(`[sql] Generating SQL report project=${projectId} path=${path}`);
             }
             const aiReviewResolvers = buildAiReviewResolvers("SQL");
             let sqlAnalysis;
@@ -1350,7 +1576,7 @@ app.post("/api/reports/dify", async (req, res, next) => {
                 });
             } catch (error) {
                 console.error("[sql] Failed to analyse SQL", error);
-                res.status(502).json({ message: error?.message || "SQL 靜態分析失敗" });
+                res.status(502).json({ message: error?.message || "SQL 分析失敗" });
                 return;
             }
 
@@ -1360,8 +1586,7 @@ app.post("/api/reports/dify", async (req, res, next) => {
                 dify: sqlAnalysis.dify,
                 difyError: sqlAnalysis.difyError,
                 dml: sqlAnalysis.dml,
-                dmlError: sqlAnalysis.dmlError,
-                staticIssueSegments: sqlAnalysis.staticIssueSegments
+                dmlError: sqlAnalysis.dmlError
             });
             await upsertReport({
                 projectId,
@@ -1499,6 +1724,195 @@ app.post("/api/reports/dify", async (req, res, next) => {
     }
 });
 
+app.post("/api/reports/document-review", async (req, res, next) => {
+    try {
+        const { projectId, projectName, userId } = req.body || {};
+        const path =
+            typeof req.body?.path === "string" && req.body.path.trim()
+                ? req.body.path.trim()
+                : DOCUMENT_REVIEW_PATH;
+
+        if (!projectId) {
+            res.status(400).json({ message: "Missing projectId for document review" });
+            return;
+        }
+
+        const [nodeRows] = await pool.query(
+            `SELECT node_key, project_id, type, name, path, parent, size, last_modified, mime, is_big
+             FROM nodes
+             WHERE project_id = ?
+             ORDER BY path ASC`,
+            [projectId]
+        );
+        const nodes = nodeRows.map(mapNodeRow);
+        if (!nodes.length) {
+            res.status(404).json({ message: "此專案尚未匯入檔案樹，無法檢查文件項目" });
+            return;
+        }
+
+        const treeMap = buildDocumentTreeMap(nodes);
+        const sqlFileNodes = nodes.filter(
+            (node) => node.type === "file" && typeof node.name === "string" && node.name.toLowerCase().endsWith(".sql")
+        );
+        let sqlFilesMeta = [];
+        if (sqlFileNodes.length) {
+            const sqlPaths = sqlFileNodes.map((node) => node.path).filter(Boolean);
+            if (sqlPaths.length) {
+                const placeholders = sqlPaths.map(() => "?").join(",");
+                try {
+                    const [fileRows] = await pool.query(
+                        `SELECT path, content
+                         FROM project_files
+                         WHERE project_id = ? AND path IN (${placeholders})`,
+                        [projectId, ...sqlPaths]
+                    );
+                    const contentMap = new Map((fileRows || []).map((row) => [row.path, row.content]));
+                    sqlFilesMeta = sqlFileNodes.map((node) => {
+                        const content = contentMap.get(node.path);
+                        const stored = contentMap.has(node.path);
+                        const hasBom = typeof content === "string" ? content.startsWith("\ufeff") : false;
+                        return { path: node.path, hasBom, stored };
+                    });
+                } catch (error) {
+                    console.warn("[documents] Failed to load SQL file content for BOM check", error);
+                    sqlFilesMeta = sqlFileNodes.map((node) => ({ path: node.path, hasBom: false, stored: false }));
+                }
+            }
+        }
+
+        const setting = await loadDocumentReviewSetting();
+        const { enabledChecks, snapshot } = buildDocumentStatusSnapshot(nodes, setting.checks, sqlFilesMeta);
+        const checksJson = JSON.stringify(enabledChecks, null, 2);
+        const statusJson = JSON.stringify(snapshot, null, 2);
+        const segmentText = [
+            `專案：${projectName || projectId}`,
+            "",
+            "檔案樹：",
+            treeMap || "(空)",
+            "",
+            "規則清單：",
+            checksJson,
+            "",
+            "狀態摘要：",
+            statusJson
+        ].join("\n");
+
+        const dify = await requestDifyReport({
+            projectName: projectName || projectId,
+            filePath: path,
+            content: segmentText,
+            userId,
+            segments: [segmentText],
+            language: "Docs",
+            loadAiReviewTemplate: async () => setting.promptTemplate,
+            loadAiReviewRules: async () => "",
+            templateContext: {
+                tree_map: treeMap,
+                checks: checksJson,
+                status_json: statusJson
+            }
+        });
+
+        const difyReport = typeof dify?.report === "string" ? dify.report : segmentText;
+        const parsedDify = safeParseReport(difyReport);
+        const difyIssues = Array.isArray(parsedDify?.issues)
+            ? parsedDify.issues
+            : Array.isArray(dify?.issues)
+            ? dify.issues
+            : [];
+        const difySummary = parsedDify && typeof parsedDify === "object" && parsedDify.summary
+            ? parsedDify.summary
+            : null;
+        const generatedAt = dify?.generatedAt || new Date().toISOString();
+
+        const summary = difySummary || {
+            total_issues: difyIssues.length,
+            sources: { document_review: { total_issues: difyIssues.length } },
+            document_status: snapshot,
+            generated_at: generatedAt
+        };
+
+        const reportEntry = {
+            type: "document_review",
+            summary: clonePlainValue(summary),
+            issues: clonePlainIssueList(difyIssues),
+            metadata: { analysis_source: "document_review", checks: enabledChecks, status: snapshot },
+            report: difyReport,
+            raw: parsedDify || undefined
+        };
+
+        const aggregatedReports = {
+            summary: [
+                buildSummaryRecord({
+                    source: "document_review",
+                    label: "文件AI審查",
+                    totalIssues: difyIssues.length,
+                    generatedAt
+                })
+            ],
+            issues: clonePlainIssueList(difyIssues)
+        };
+
+        const finalPayload = {
+            summary,
+            issues: clonePlainIssueList(difyIssues),
+            reports: { document_review: reportEntry },
+            aggregated_reports: aggregatedReports,
+            metadata: {
+                analysis_source: "document_review",
+                components: ["document_review"],
+                checks: enabledChecks,
+                document_status: snapshot
+            }
+        };
+
+        const reportString = JSON.stringify(finalPayload, null, 2);
+        const combinedReportJson = JSON.stringify(aggregatedReports, null, 2);
+        const aiReportJson = JSON.stringify({ issues: clonePlainIssueList(difyIssues) }, null, 2);
+        const resolvedUserId = typeof userId === "string" ? userId.trim() : "";
+
+        await upsertReport({
+            projectId,
+            path,
+            report: reportString,
+            chunks: [],
+            segments: [segmentText],
+            conversationId: typeof dify?.conversationId === "string" ? dify.conversationId : "",
+            userId: resolvedUserId,
+            generatedAt,
+            combinedReportJson,
+            staticReportJson: EMPTY_ISSUES_JSON,
+            aiReportJson
+        });
+
+        const savedAtIso = new Date().toISOString();
+        res.json({
+            projectId,
+            path,
+            report: reportString,
+            chunks: [],
+            segments: [segmentText],
+            conversationId: typeof dify?.conversationId === "string" ? dify.conversationId : "",
+            generatedAt,
+            combinedReportJson,
+            staticReportJson: EMPTY_ISSUES_JSON,
+            aiReportJson,
+            analysis: {
+                documentStatus: snapshot,
+                documentChecks: enabledChecks,
+                dify,
+                difySummary
+            },
+            dify,
+            savedAt: savedAtIso
+        });
+    } catch (error) {
+        console.error("[dify] Failed to generate document review", error);
+        const status = error?.message && error.message.includes("not configured") ? 500 : 502;
+        res.status(status).json({ message: error?.message || "文件 AI 審查失敗" });
+    }
+});
+
 app.post("/api/reports/dify/snippet", async (req, res, next) => {
     try {
         const { projectId, projectName, path, selection, userId, files } = req.body || {};
@@ -1520,7 +1934,7 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
 
         if (isSqlPath(path)) {
             if (REPORT_DEBUG_LOGS) {
-                console.log(`[sql] Running static SQL analysis for snippet project=${projectId} path=${path}`);
+                console.log(`[sql] Generating SQL snippet report project=${projectId} path=${path}`);
             }
             const aiReviewResolvers = buildAiReviewResolvers("SQL");
             let sqlAnalysis;
@@ -1535,7 +1949,7 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
                 });
             } catch (error) {
                 console.error("[sql] Failed to analyse SQL snippet", error);
-                res.status(502).json({ message: error?.message || "SQL 靜態分析失敗" });
+                res.status(502).json({ message: error?.message || "SQL 分析失敗" });
                 return;
             }
             const reportPayload = buildSqlReportPayload({
@@ -1543,7 +1957,8 @@ app.post("/api/reports/dify/snippet", async (req, res, next) => {
                 content: normalised.content,
                 dify: sqlAnalysis.dify,
                 difyError: sqlAnalysis.difyError,
-                staticIssueSegments: sqlAnalysis.staticIssueSegments
+                dml: sqlAnalysis.dml,
+                dmlError: sqlAnalysis.dmlError
             });
             res.json({
                 projectId,
@@ -1712,6 +2127,36 @@ app.post("/api/settings/ai-review", async (req, res, next) => {
         );
         clearAiReviewCaches();
         res.json({ success: true, id: result?.insertId || null, language });
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.get("/api/settings/document-review", async (_req, res, next) => {
+    try {
+        const setting = await loadDocumentReviewSetting();
+        res.json(setting);
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.post("/api/settings/document-review", async (req, res, next) => {
+    try {
+        const checks = normaliseDocumentChecks(req.body?.checks);
+        const promptTemplate =
+            typeof req.body?.promptTemplate === "string" && req.body.promptTemplate.trim()
+                ? req.body.promptTemplate
+                : DEFAULT_DOCUMENT_PROMPT_TEMPLATE;
+
+        const serialisedChecks = JSON.stringify(checks);
+        const [result] = await pool.query(
+            `INSERT INTO setting_document_review (checks_json, prompt_template)
+             VALUES (?, ?)`,
+            [serialisedChecks, promptTemplate]
+        );
+
+        res.json({ success: true, id: result?.insertId || null });
     } catch (error) {
         next(error);
     }
