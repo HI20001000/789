@@ -5344,6 +5344,8 @@ onBeforeUnmount(() => {
 
                                     </div>
 
+                                    </div>
+
                                     <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
                                     <div class="aiReviewPlaceholderPanel">
                                         <div class="aiReviewPlaceholderHeader">
