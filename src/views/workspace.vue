@@ -5119,11 +5119,21 @@ onBeforeUnmount(() => {
                                             {{ ruleSettingsState.message || aiReviewState.message }}
                                         </p>
                                         <button type="button" class="btn outline" @click="addRuleRow"
-                                            :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
+                                            :disabled="
+                                                ruleSettingsState.loading ||
+                                                ruleSettingsState.saving ||
+                                                aiReviewState.loading ||
+                                                aiReviewState.saving
+                                            ">
                                             新增規則
                                         </button>
                                         <button type="button" class="btn" @click="handleSaveRules"
-                                            :disabled="ruleSettingsState.saving || ruleSettingsState.loading || aiReviewState.saving || aiReviewState.loading">
+                                            :disabled="
+                                                ruleSettingsState.saving ||
+                                                ruleSettingsState.loading ||
+                                                aiReviewState.saving ||
+                                                aiReviewState.loading
+                                            ">
                                             {{ ruleSettingsState.saving ? "保存中..." : "保存設定" }}
                                         </button>
                                     </div>
@@ -5233,6 +5243,50 @@ onBeforeUnmount(() => {
                                             :disabled="documentSettingState.saving || documentSettingState.loading">
                                             {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
                                         </button>
+                                        <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
+                                            :disabled="documentSettingState.saving || documentSettingState.loading">
+                                            {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
+                                        </button>
+                                    </div>
+
+                                    <div class="ruleGrid" role="table" aria-label="文件規則列表">
+                                        <div class="ruleRow ruleRow--header" role="row">
+                                            <div class="ruleCell" role="columnheader">規則 ID</div>
+                                            <div class="ruleCell" role="columnheader">描述</div>
+                                            <div class="ruleCell" role="columnheader">啟用</div>
+                                            <div class="ruleCell" role="columnheader">風險指標</div>
+                                            <div class="ruleCell" role="columnheader">操作</div>
+                                        </div>
+                                        <div v-for="(check, index) in documentSettingState.checks"
+                                            :key="check.localId || check.ruleId || `doc-check-${index}`"
+                                            class="ruleRow" role="row">
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} ID`" placeholder="DOC-001" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.description" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 描述`"
+                                                    :placeholder="ruleDescriptionPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <label class="toggle">
+                                                    <input v-model="check.enabled" type="checkbox" />
+                                                    <span>啟用</span>
+                                                </label>
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="check.riskIndicator" type="text" class="ruleInput"
+                                                    :aria-label="`文件規則 ${index + 1} 風險指標`"
+                                                    :placeholder="riskIndicatorPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell ruleCell--actions" role="cell">
+                                                <button type="button" class="btn ghost" @click="removeDocumentRuleRow(index)"
+                                                    :disabled="documentSettingState.loading || documentSettingState.saving">
+                                                    刪除
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <div class="ruleGrid" role="table" aria-label="文件規則列表">
