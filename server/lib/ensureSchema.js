@@ -151,6 +151,9 @@ export async function ensureSchema({ logger } = {}) {
         }
     }
 
+    await ensureColumn({ info, error }, "nodes", "encoding VARCHAR(64) DEFAULT ''");
+    await ensureColumn({ info, error }, "project_files", "encoding VARCHAR(64) DEFAULT ''");
+
     const reportColumnDefinitions = [
         "combined_report_json LONGTEXT NULL",
         "static_report_json LONGTEXT NULL",
