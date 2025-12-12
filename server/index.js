@@ -1940,6 +1940,15 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             statusJson
         ].join("\n");
 
+        const difyTemplateContext = {
+            project_tree: treeMap,
+            tree_map: treeMap,
+            rule_set: checksJson,
+            checks: checksJson,
+            status_json: statusJson,
+            file_name: (path.split("/").filter(Boolean).pop() || path || resolvedProjectName || "")
+        };
+
         const dify = await requestDifyReport({
             projectName: resolvedProjectName,
             filePath: path,
@@ -1949,11 +1958,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             language: "Docs",
             loadAiReviewTemplate: async () => setting.promptTemplate,
             loadAiReviewRules: async () => "",
-            templateContext: {
-                tree_map: treeMap,
-                checks: checksJson,
-                status_json: statusJson
-            }
+            templateContext: difyTemplateContext
         });
 
         const difyReport = typeof dify?.report === "string" ? dify.report : segmentText;
