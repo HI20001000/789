@@ -2069,7 +2069,8 @@ app.post("/api/reports/document-review", async (req, res, next) => {
 
         const setting = await loadDocumentReviewSetting();
         const { enabledChecks, snapshot } = buildDocumentStatusSnapshot(nodes, setting.checks, sqlFilesMeta);
-        const checksJson = JSON.stringify(enabledChecks, null, 2);
+        const checksForDify = enabledChecks.map(({ key: _ruleKey, ...rest }) => rest);
+        const checksJson = JSON.stringify(checksForDify, null, 2);
         const statusJson = JSON.stringify(snapshot, null, 2);
         const segmentText = [
             `專案：${resolvedProjectName}`,
