@@ -1989,6 +1989,13 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             }
         }
 
+        for (const node of nodes) {
+            if (node?.type !== "file") continue;
+            const key = node?.path || node?.name || "";
+            if (!key || encodingMap.has(key)) continue;
+            encodingMap.set(key, "UTF-8");
+        }
+
         const treeMap = buildDocumentTreeMap(nodes, { encodingMap });
 
         const setting = await loadDocumentReviewSetting();
