@@ -369,7 +369,9 @@ function buildDocumentTreeMap(nodes, { maxEntries = 800, encodingMap = new Map()
         const indent = depth > 0 ? "  ".repeat(depth) : "";
         const icon = node?.type === "dir" ? "📂" : "📄";
         const label = typeof node?.name === "string" && node.name.trim() ? node.name : node?.path || "";
-        const encoding = node?.type === "file" ? encodingMap.get(node?.path || node?.name || "") : "";
+        const encoding = node?.type === "file"
+            ? encodingMap.get(node?.path || node?.name || "") || resolveNodeEncoding(node)
+            : "";
         const encodingSuffix = encoding ? ` [${encoding}]` : "";
         lines.push(`${indent}${icon} ${label}${encodingSuffix}`.trimEnd());
     }
@@ -1949,7 +1951,6 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             }
         }
 
-        const treeMap = buildDocumentTreeMap(nodes, { encodingMap });
         const sqlFileNodes = nodes.filter(
             (node) => node.type === "file" && typeof node.name === "string" && node.name.toLowerCase().endsWith(".sql")
         );
@@ -1978,6 +1979,17 @@ app.post("/api/reports/document-review", async (req, res, next) => {
                 }
             }
         }
+
+        for (const meta of sqlFilesMeta) {
+            if (!meta?.path || encodingMap.has(meta.path)) continue;
+            if (meta.hasBom) {
+                encodingMap.set(meta.path, "UTF-8-BOM");
+            } else if (meta.stored) {
+                encodingMap.set(meta.path, "UTF-8");
+            }
+        }
+
+        const treeMap = buildDocumentTreeMap(nodes, { encodingMap });
 
         const setting = await loadDocumentReviewSetting();
         const { enabledChecks, snapshot } = buildDocumentStatusSnapshot(nodes, setting.checks, sqlFilesMeta);
