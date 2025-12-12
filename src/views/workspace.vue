@@ -5304,19 +5304,13 @@ onBeforeUnmount(() => {
                                         </button>
                                     </div>
 
-                                <div class="ruleGrid" role="table" aria-label="規則列表">
-                                    <div class="ruleRow ruleRow--header" role="row">
-                                        <div class="ruleCell" role="columnheader">規則 ID</div>
-                                        <div class="ruleCell" role="columnheader">描述</div>
-                                        <div class="ruleCell" role="columnheader">啟用</div>
-                                        <div class="ruleCell" role="columnheader">風險指標</div>
-                                        <div class="ruleCell" role="columnheader">操作</div>
-                                    </div>
-                                    <div v-for="(rule, index) in activeRuleSettings"
-                                        :key="rule.localId || `rule-${index}`" class="ruleRow" role="row">
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="rule.ruleId" type="text" class="ruleInput"
-                                                :aria-label="`規則 ${index + 1} ID`" placeholder="R-001" />
+                                    <div class="ruleGrid" role="table" aria-label="規則列表">
+                                        <div class="ruleRow ruleRow--header" role="row">
+                                            <div class="ruleCell" role="columnheader">規則 ID</div>
+                                            <div class="ruleCell" role="columnheader">描述</div>
+                                            <div class="ruleCell" role="columnheader">啟用</div>
+                                            <div class="ruleCell" role="columnheader">風險指標</div>
+                                            <div class="ruleCell" role="columnheader">操作</div>
                                         </div>
                                         <div class="ruleCell" role="cell">
                                             <input v-model="rule.description" type="text" class="ruleInput"
@@ -5340,6 +5334,7 @@ onBeforeUnmount(() => {
                                                 刪除
                                             </button>
                                         </div>
+
                                     </div>
 
                                     </div>
