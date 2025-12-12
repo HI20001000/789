@@ -20,6 +20,7 @@ const props = defineProps({
 
 const isDirectory = computed(() => props.node.type === "dir");
 const isFile = computed(() => props.node.type === "file");
+const isDocumentReview = computed(() => Boolean(props.node.isDocumentReview));
 
 const fileState = computed(() => {
     if (!isFile.value) return null;
@@ -108,7 +109,16 @@ const icon = computed(() => {
     if (isDirectory.value) {
         return isNodeExpanded.value ? "📂" : "📁";
     }
+    if (isDocumentReview.value) {
+        return "🧠";
+    }
     return "📄";
+});
+
+const iconClass = computed(() => {
+    if (isDirectory.value) return "";
+    if (isDocumentReview.value) return "reportTreeIcon--documentReview";
+    return "";
 });
 
 const isActive = computed(() => {
@@ -196,7 +206,7 @@ function handleGenerate(event) {
                 <span v-else>▸</span>
             </button>
             <span v-else class="reportTreeCaret reportTreeCaret--placeholder"></span>
-            <span class="reportTreeIcon">{{ icon }}</span>
+            <span class="reportTreeIcon" :class="iconClass">{{ icon }}</span>
             <span class="reportTreeLabel" :title="node.path">{{ node.name }}</span>
             <template v-if="isFile && fileState">
                 <button
@@ -306,6 +316,10 @@ function handleGenerate(event) {
     text-align: center;
     font-size: 16px;
     color: var(--tree-icon);
+}
+
+.reportTreeIcon--documentReview {
+    color: #7c3aed;
 }
 
 .reportTreeLabel {

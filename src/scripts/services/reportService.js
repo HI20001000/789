@@ -178,8 +178,29 @@ export async function fetchProjectReports(projectId) {
     return [];
 }
 
+export async function fetchProjectDocumentReports(projectId) {
+    if (!projectId) return [];
+    const encodedId = encodeURIComponent(projectId);
+    let response;
+    try {
+        response = await getJson(`/projects/${encodedId}/document-reports`);
+    } catch (error) {
+        console.warn("[documents] Failed to fetch project document reports", error);
+        return [];
+    }
+
+    if (Array.isArray(response?.reports) && response.reports.length) {
+        return response.reports;
+    }
+    if (Array.isArray(response) && response.length) {
+        return response;
+    }
+    return [];
+}
+
 export default {
     generateReportViaDify,
     generateDocumentReviewReport,
-    fetchProjectReports
+    fetchProjectReports,
+    fetchProjectDocumentReports
 };

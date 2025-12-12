@@ -8,7 +8,8 @@ import * as fileSystemService from "../scripts/services/fileSystemService.js";
 import {
     generateReportViaDify,
     generateDocumentReviewReport,
-    fetchProjectReports
+    fetchProjectReports,
+    fetchProjectDocumentReports
 } from "../scripts/services/reportService.js";
 import {
     fetchAiReviewSetting,
@@ -226,6 +227,7 @@ const reportStates = reactive({});
 const reportTreeCache = reactive({});
 const reportBatchStates = reactive({});
 const activeReportTarget = ref(null);
+const pendingReportTarget = ref(null);
 const pendingReportIssueFocus = ref(null);
 const reportExportState = reactive({
     combined: false,
@@ -289,6 +291,7 @@ const documentSettingState = reactive({
     })),
     promptTemplate: DEFAULT_DOCUMENT_PROMPT
 });
+const documentPromptInputRef = ref(null);
 const activeRuleSettings = computed(() => {
     const language = settingLanguage.value;
     if (!Array.isArray(ruleSettingsByLanguage[language])) {
@@ -315,6 +318,7 @@ const aiReviewPlaceholder = computed(() =>
         ? "輸入要送給 Dify 的 SQL 審查樣板"
         : "輸入 Java AI 審查時要傳送的程式碼範本"
 );
+const documentPromptPlaceholder = "輸入要送給 Dify 的文件檢查提示";
 const aiReviewPlaceholders = [
     { key: "project_name", label: "專案名稱", description: "專案名稱", group: "basic", required: true },
     { key: "file_path", label: "檔案路徑", description: "檔案路徑", group: "basic", required: true },
@@ -390,6 +394,52 @@ const aiReviewPlaceholderStatusText = computed(() => {
     }
     return "所有必填占位符已插入，可自由加入可選欄位。";
 });
+const documentPromptPlaceholders = [
+    { key: "file_name", label: "檔案名稱", description: "目前掃描的文件名稱", group: "basic", required: true },
+    { key: "rule_set", label: "規則集", description: "文件掃描規則清單", group: "basic", required: true },
+    {
+        key: "project_tree",
+        label: "項目樹級結構",
+        description: "專案目錄的樹狀結構（含父子層級）",
+        group: "basic",
+        required: true
+    }
+];
+const documentPromptPlaceholderGroups = [{ key: "basic", label: "基本占位符" }];
+const documentPromptPlaceholderUsage = computed(() => {
+    const text = typeof documentSettingState.promptTemplate === "string" ? documentSettingState.promptTemplate : "";
+    const matches = text.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g);
+    const tokens = new Set();
+    for (const match of matches) {
+        const token = match?.[1];
+        if (token) {
+            tokens.add(token);
+        }
+    }
+    return tokens;
+});
+const documentPromptPlaceholderPanels = computed(() =>
+    documentPromptPlaceholderGroups.map((group) => ({
+        ...group,
+        placeholders: documentPromptPlaceholders
+            .filter((entry) => entry.group === group.key)
+            .map((entry) => ({ ...entry, used: documentPromptPlaceholderUsage.value.has(entry.key) }))
+    }))
+);
+const documentPromptMissingRequiredPlaceholders = computed(() =>
+    documentPromptPlaceholders.filter(
+        (entry) => entry.required && !documentPromptPlaceholderUsage.value.has(entry.key)
+    )
+);
+const documentPromptPlaceholderStatusText = computed(() => {
+    if (documentPromptMissingRequiredPlaceholders.value.length) {
+        const missing = documentPromptMissingRequiredPlaceholders.value
+            .map((entry) => `{{${entry.key}}}`)
+            .join("、");
+        return `請插入必要占位符：${missing}`;
+    }
+    return "所有必填占位符已插入，可自由加入可選欄位。";
+});
 const reportProjectEntries = computed(() => {
     const list = Array.isArray(projects.value) ? projects.value : [];
     return list.map((project) => {
@@ -416,6 +466,15 @@ const activePreviewTarget = computed(() => {
     return { projectId, path };
 });
 
+function handleReportPanelGenerate(project, node) {
+    const delaySelect = isReportToolActive.value;
+    return generateReportForFile(project, node, {
+        autoSelect: true,
+        silent: false,
+        delaySelectUntilReady: delaySelect
+    });
+}
+
 const reportPanelConfig = computed(() => {
     const viewMode = isReportToolActive.value ? "reports" : "projects";
     const showProjectActions = isReportToolActive.value;
@@ -435,8 +494,7 @@ const reportPanelConfig = computed(() => {
         isNodeExpanded: isReportNodeExpanded,
         toggleNode: toggleReportNode,
         getReportState: getReportStateForFile,
-        onGenerate: generateReportForFile,
-        onGenerateDocument: generateDocumentReview,
+        onGenerate: handleReportPanelGenerate,
         onSelect: viewMode === "reports" ? selectReport : openProjectFileFromReportTree,
         getStatusLabel,
         onReloadProject: loadReportTreeForProject,
@@ -514,6 +572,21 @@ const activeReport = computed(() => {
 
 const isActiveReportProcessing = computed(
     () => activeReport.value?.state?.status === "processing"
+);
+const isReportGenerationPending = computed(() => Boolean(pendingReportTarget.value));
+const reportViewerStatusText = computed(() => {
+    if (isActiveReportProcessing.value) {
+        return "正在透過 Dify 執行 AI審查，請稍候…";
+    }
+    const pending = pendingReportTarget.value;
+    if (pending) {
+        const label = pending.label || pending.path;
+        return label ? `正在生成 ${label} 的報告，請稍候…` : "正在生成報告，請稍候…";
+    }
+    return "";
+});
+const isReportViewerBusy = computed(
+    () => isActiveReportProcessing.value || isReportGenerationPending.value
 );
 
 const viewerHasContent = computed(() => {
@@ -3418,6 +3491,36 @@ function formatAiReviewPlaceholder(key) {
     return key ? `{{${key}}}` : "";
 }
 
+function insertDocumentPromptPlaceholder(key) {
+    if (!key) return;
+    if (documentPromptPlaceholderUsage.value.has(key)) {
+        documentSettingState.message = `{{${key}}} 已於模版中使用`;
+        return;
+    }
+    const placeholder = `{{${key}}}`;
+    const current =
+        typeof documentSettingState.promptTemplate === "string" ? documentSettingState.promptTemplate : "";
+    const target = documentPromptInputRef.value;
+    if (target && typeof target.selectionStart === "number" && typeof target.selectionEnd === "number") {
+        const { selectionStart, selectionEnd } = target;
+        documentSettingState.promptTemplate =
+            current.slice(0, selectionStart) + placeholder + current.slice(selectionEnd, current.length);
+        nextTick(() => {
+            const caret = selectionStart + placeholder.length;
+            target.setSelectionRange(caret, caret);
+            target.focus();
+        });
+    } else {
+        const prefix = current && !current.endsWith("\n") ? "\n" : "";
+        documentSettingState.promptTemplate = `${current}${prefix}${placeholder}`;
+    }
+    documentSettingState.message = `${placeholder} 已插入`;
+}
+
+function formatDocumentPromptPlaceholder(key) {
+    return key ? `{{${key}}}` : "";
+}
+
 function normaliseProjectId(projectId) {
     if (projectId === null || projectId === undefined) return "";
     return String(projectId);
@@ -3669,7 +3772,7 @@ function appendDocumentReviewNode(nodes) {
     if (existing) return nodes;
     const docNode = {
         type: "file",
-        name: "文件AI審查",
+        name: "文件審查",
         path: DOCUMENT_REVIEW_PATH,
         parent: "",
         mime: "application/json",
@@ -3712,6 +3815,26 @@ function ensureFileReportState(projectId, path) {
         reportStates[key] = createDefaultReportState();
     }
     return reportStates[key];
+}
+
+function markPendingReportTarget(projectId, path, label = "") {
+    const normalisedProjectId = normaliseProjectId(projectId);
+    if (!normalisedProjectId || !path) return;
+    pendingReportTarget.value = {
+        projectId: normalisedProjectId,
+        path,
+        label
+    };
+}
+
+function clearPendingReportTarget(projectId, path) {
+    const normalisedProjectId = normaliseProjectId(projectId);
+    if (!normalisedProjectId || !path) return;
+    const pending = pendingReportTarget.value;
+    if (!pending) return;
+    if (pending.projectId === normalisedProjectId && pending.path === path) {
+        pendingReportTarget.value = null;
+    }
 }
 
 function getReportStateForFile(projectId, path) {
@@ -3866,8 +3989,17 @@ async function hydrateReportsForProject(projectId) {
     entry.hydratingReports = true;
     entry.reportHydrationError = "";
     try {
-        const records = await fetchProjectReports(projectId);
-        for (const record of records) {
+        const [records, documentRecords] = await Promise.all([
+            fetchProjectReports(projectId),
+            fetchProjectDocumentReports(projectId)
+        ]);
+        const mergedRecords = new Map();
+        for (const record of [...(records || []), ...(documentRecords || [])]) {
+            if (!record || !record.path) continue;
+            const key = record.path;
+            mergedRecords.set(key, record);
+        }
+        for (const record of mergedRecords.values()) {
             if (!record || !record.path) continue;
             const state = ensureFileReportState(projectId, record.path);
             if (!state) continue;
@@ -4234,7 +4366,7 @@ async function loadTextContentForNode(project, node) {
 }
 
 async function generateDocumentReview(project, options = {}) {
-    const { autoSelect = true, silent = false } = options;
+    const { autoSelect = true, silent = false, delaySelectUntilReady = false } = options;
     if (!project) {
         return { status: "skipped" };
     }
@@ -4242,6 +4374,12 @@ async function generateDocumentReview(project, options = {}) {
     const state = ensureFileReportState(projectId, DOCUMENT_REVIEW_PATH);
     if (!state || state.status === "processing") {
         return { status: "processing" };
+    }
+
+    const shouldDelaySelection = Boolean(delaySelectUntilReady && autoSelect);
+    const shouldSelectImmediately = autoSelect && !shouldDelaySelection;
+    if (shouldDelaySelection) {
+        markPendingReportTarget(projectId, DOCUMENT_REVIEW_PATH, "文件掃描報告");
     }
 
     state.status = "processing";
@@ -4299,7 +4437,7 @@ async function generateDocumentReview(project, options = {}) {
             state.sourceLoaded = Boolean(state.sourceText);
         }
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: DOCUMENT_REVIEW_PATH
@@ -4332,7 +4470,7 @@ async function generateDocumentReview(project, options = {}) {
         state.updatedAt = now;
         state.updatedAtDisplay = now.toLocaleString();
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: DOCUMENT_REVIEW_PATH
@@ -4344,21 +4482,39 @@ async function generateDocumentReview(project, options = {}) {
         }
 
         return { status: "error", error };
+    } finally {
+        if (shouldDelaySelection) {
+            activeReportTarget.value = {
+                projectId,
+                path: DOCUMENT_REVIEW_PATH
+            };
+            clearPendingReportTarget(projectId, DOCUMENT_REVIEW_PATH);
+        }
     }
 }
 
 async function generateReportForFile(project, node, options = {}) {
-    const { autoSelect = true, silent = false } = options;
+    const { autoSelect = true, silent = false, delaySelectUntilReady = false } = options;
     if (!project || !node || node.type !== "file") {
         return { status: "skipped" };
     }
     if (node.isDocumentReview) {
-        return await generateDocumentReview(project, { autoSelect, silent });
+        return await generateDocumentReview(project, {
+            autoSelect,
+            silent,
+            delaySelectUntilReady
+        });
     }
     const projectId = normaliseProjectId(project.id);
     const state = ensureFileReportState(projectId, node.path);
     if (!state || state.status === "processing") {
         return { status: "processing" };
+    }
+
+    const shouldDelaySelection = Boolean(delaySelectUntilReady && autoSelect);
+    const shouldSelectImmediately = autoSelect && !shouldDelaySelection;
+    if (shouldDelaySelection) {
+        markPendingReportTarget(projectId, node.path, node.name || node.path);
     }
 
     state.status = "processing";
@@ -4427,7 +4583,7 @@ async function generateReportForFile(project, node, options = {}) {
         state.staticReportJson = typeof payload?.staticReportJson === "string" ? payload.staticReportJson : "";
         state.aiReportJson = typeof payload?.aiReportJson === "string" ? payload.aiReportJson : "";
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: node.path
@@ -4462,7 +4618,7 @@ async function generateReportForFile(project, node, options = {}) {
         state.updatedAt = now;
         state.updatedAtDisplay = now.toLocaleString();
 
-        if (autoSelect) {
+        if (shouldSelectImmediately) {
             activeReportTarget.value = {
                 projectId,
                 path: node.path
@@ -4478,6 +4634,14 @@ async function generateReportForFile(project, node, options = {}) {
         }
 
         return { status: "error", error };
+    } finally {
+        if (shouldDelaySelection) {
+            activeReportTarget.value = {
+                projectId,
+                path: node.path
+            };
+            clearPendingReportTarget(projectId, node.path);
+        }
     }
 }
 
@@ -5140,19 +5304,13 @@ onBeforeUnmount(() => {
                                         </button>
                                     </div>
 
-                                <div class="ruleGrid" role="table" aria-label="規則列表">
-                                    <div class="ruleRow ruleRow--header" role="row">
-                                        <div class="ruleCell" role="columnheader">規則 ID</div>
-                                        <div class="ruleCell" role="columnheader">描述</div>
-                                        <div class="ruleCell" role="columnheader">啟用</div>
-                                        <div class="ruleCell" role="columnheader">風險指標</div>
-                                        <div class="ruleCell" role="columnheader">操作</div>
-                                    </div>
-                                    <div v-for="(rule, index) in activeRuleSettings"
-                                        :key="rule.localId || `rule-${index}`" class="ruleRow" role="row">
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="rule.ruleId" type="text" class="ruleInput"
-                                                :aria-label="`規則 ${index + 1} ID`" placeholder="R-001" />
+                                    <div class="ruleGrid" role="table" aria-label="規則列表">
+                                        <div class="ruleRow ruleRow--header" role="row">
+                                            <div class="ruleCell" role="columnheader">規則 ID</div>
+                                            <div class="ruleCell" role="columnheader">描述</div>
+                                            <div class="ruleCell" role="columnheader">啟用</div>
+                                            <div class="ruleCell" role="columnheader">風險指標</div>
+                                            <div class="ruleCell" role="columnheader">操作</div>
                                         </div>
                                         <div v-for="(rule, index) in activeRuleSettings"
                                             :key="rule.localId || `rule-${index}`" class="ruleRow" role="row">
@@ -5178,11 +5336,17 @@ onBeforeUnmount(() => {
                                             </div>
                                             <div class="ruleCell ruleCell--actions" role="cell">
                                                 <button type="button" class="btn ghost" @click="removeRuleRow(index)"
-                                                    :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
+                                                    :disabled="
+                                                        ruleSettingsState.loading ||
+                                                        ruleSettingsState.saving ||
+                                                        aiReviewState.loading ||
+                                                        aiReviewState.saving
+                                                    ">
                                                     刪除
                                                 </button>
                                             </div>
                                         </div>
+
                                     </div>
 
                                     <label class="settingsLabel" for="aiReviewContent">AI 審查程式碼區塊</label>
@@ -5247,50 +5411,6 @@ onBeforeUnmount(() => {
                                             :disabled="documentSettingState.saving || documentSettingState.loading">
                                             {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
                                         </button>
-                                        <button type="button" class="btn" @click="handleSaveDocumentReviewSetting"
-                                            :disabled="documentSettingState.saving || documentSettingState.loading">
-                                            {{ documentSettingState.saving ? "保存中..." : "保存文件設定" }}
-                                        </button>
-                                    </div>
-
-                                    <div class="ruleGrid" role="table" aria-label="文件規則列表">
-                                        <div class="ruleRow ruleRow--header" role="row">
-                                            <div class="ruleCell" role="columnheader">規則 ID</div>
-                                            <div class="ruleCell" role="columnheader">描述</div>
-                                            <div class="ruleCell" role="columnheader">啟用</div>
-                                            <div class="ruleCell" role="columnheader">風險指標</div>
-                                            <div class="ruleCell" role="columnheader">操作</div>
-                                        </div>
-                                        <div v-for="(check, index) in documentSettingState.checks"
-                                            :key="check.localId || check.ruleId || `doc-check-${index}`"
-                                            class="ruleRow" role="row">
-                                            <div class="ruleCell" role="cell">
-                                                <input v-model="check.ruleId" type="text" class="ruleInput"
-                                                    :aria-label="`文件規則 ${index + 1} ID`" placeholder="DOC-001" />
-                                            </div>
-                                            <div class="ruleCell" role="cell">
-                                                <input v-model="check.description" type="text" class="ruleInput"
-                                                    :aria-label="`文件規則 ${index + 1} 描述`"
-                                                    :placeholder="ruleDescriptionPlaceholder" />
-                                            </div>
-                                            <div class="ruleCell" role="cell">
-                                                <label class="toggle">
-                                                    <input v-model="check.enabled" type="checkbox" />
-                                                    <span>啟用</span>
-                                                </label>
-                                            </div>
-                                            <div class="ruleCell" role="cell">
-                                                <input v-model="check.riskIndicator" type="text" class="ruleInput"
-                                                    :aria-label="`文件規則 ${index + 1} 風險指標`"
-                                                    :placeholder="riskIndicatorPlaceholder" />
-                                            </div>
-                                            <div class="ruleCell ruleCell--actions" role="cell">
-                                                <button type="button" class="btn ghost" @click="removeDocumentRuleRow(index)"
-                                                    :disabled="documentSettingState.loading || documentSettingState.saving">
-                                                    刪除
-                                                </button>
-                                            </div>
-                                        </div>
                                     </div>
 
                                     <div class="ruleGrid" role="table" aria-label="文件規則列表">
@@ -5334,9 +5454,35 @@ onBeforeUnmount(() => {
                                     </div>
 
                                     <label class="settingsLabel" for="documentPrompt">AI 提示範本</label>
+                                    <div class="aiReviewPlaceholderPanel">
+                                        <div class="aiReviewPlaceholderHeader">
+                                            <p class="aiReviewPlaceholderTitle">可用占位符</p>
+                                            <p class="aiReviewPlaceholderStatusText">
+                                                {{ documentPromptPlaceholderStatusText }}
+                                            </p>
+                                        </div>
+                                        <div v-for="group in documentPromptPlaceholderPanels" :key="group.key"
+                                            class="aiReviewPlaceholderGroup">
+                                            <p class="aiReviewPlaceholderGroupLabel">{{ group.label }}</p>
+                                            <ul class="aiReviewPlaceholderList">
+                                                <li v-for="placeholder in group.placeholders" :key="placeholder.key"
+                                                    class="aiReviewPlaceholderItem">
+                                                    <button type="button" class="aiReviewPlaceholderButton"
+                                                        :class="{ used: placeholder.used }"
+                                                        :disabled="placeholder.used || documentSettingState.loading || documentSettingState.saving"
+                                                        :title="placeholder.used ? '此占位符已於模版中使用' : placeholder.description"
+                                                        @click="insertDocumentPromptPlaceholder(placeholder.key)">
+                                                        {{ formatDocumentPromptPlaceholder(placeholder.key) }}
+                                                    </button>
+                                                    <span class="aiReviewPlaceholderDescription">{{ placeholder.description }}</span>
+                                                    <span v-if="placeholder.used" class="aiReviewPlaceholderHint">此占位符已於模版中使用</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
                                     <textarea id="documentPrompt" v-model="documentSettingState.promptTemplate"
-                                        class="aiReviewInput" rows="6"
-                                        placeholder="輸入要送給 Dify 的文件檢查提示"
+                                        class="aiReviewInput" rows="6" ref="documentPromptInputRef"
+                                        :placeholder="documentPromptPlaceholder"
                                         :disabled="documentSettingState.loading"></textarea>
                                 </div>
                             </div>
@@ -5345,15 +5491,15 @@ onBeforeUnmount(() => {
                 </template>
                 <template v-else-if="isReportToolActive">
                     <div class="panelHeader">報告檢視</div>
-                    <template v-if="hasReadyReports || viewerHasContent">
+                    <template v-if="hasReadyReports || viewerHasContent || isReportGenerationPending">
                         <div class="reportViewerContent"
-                            :class="{ 'reportViewerContent--loading': isActiveReportProcessing }"
-                            ref="reportViewerContentRef" :aria-busy="isActiveReportProcessing ? 'true' : 'false'">
-                            <div v-if="isActiveReportProcessing"
+                            :class="{ 'reportViewerContent--loading': isReportViewerBusy }"
+                            ref="reportViewerContentRef" :aria-busy="isReportViewerBusy ? 'true' : 'false'">
+                            <div v-if="isReportViewerBusy"
                                 class="reportViewerProcessingOverlay reportViewerLoading" role="status"
                                 aria-live="polite">
                                 <span class="reportViewerSpinner" aria-hidden="true"></span>
-                                <p class="reportViewerProcessingText">正在透過 Dify 執行 AI審查，請稍候…</p>
+                                <p class="reportViewerProcessingText">{{ reportViewerStatusText }}</p>
                             </div>
                             <template v-if="activeReport">
                                 <div class="reportViewerHeader">
