@@ -340,7 +340,20 @@ function mapDocumentReviewSettingRow(row) {
     };
 }
 
-function buildDocumentTreeMap(nodes, { maxEntries = 800 } = {}) {
+function extractEncodingFromMime(mime) {
+    if (typeof mime !== "string") return "";
+    const match = mime.match(/charset=([^;]+)/i);
+    return match?.[1]?.trim() || "";
+}
+
+function resolveNodeEncoding(node) {
+    const encoding = typeof node?.encoding === "string" ? node.encoding.trim() : "";
+    if (encoding) return encoding;
+    const charset = extractEncodingFromMime(node?.mime || "");
+    return charset || "";
+}
+
+function buildDocumentTreeMap(nodes, { maxEntries = 800, encodingMap = new Map() } = {}) {
     const sorted = Array.isArray(nodes) ? [...nodes] : [];
     sorted.sort((a, b) => (a?.path || "").localeCompare(b?.path || ""));
     const lines = [];
@@ -354,7 +367,9 @@ function buildDocumentTreeMap(nodes, { maxEntries = 800 } = {}) {
         const indent = depth > 0 ? "  ".repeat(depth) : "";
         const icon = node?.type === "dir" ? "📂" : "📄";
         const label = typeof node?.name === "string" && node.name.trim() ? node.name : node?.path || "";
-        lines.push(`${indent}${icon} ${label}`.trimEnd());
+        const encoding = node?.type === "file" ? encodingMap.get(node?.path || node?.name || "") : "";
+        const encodingSuffix = encoding ? ` [${encoding}]` : "";
+        lines.push(`${indent}${icon} ${label}${encodingSuffix}`.trimEnd());
     }
     return lines.join("\n");
 }
@@ -1893,7 +1908,15 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             return;
         }
 
-        const treeMap = buildDocumentTreeMap(nodes);
+        const encodingMap = new Map();
+        for (const node of nodes) {
+            const encoding = resolveNodeEncoding(node);
+            if (encoding && (node?.path || node?.name)) {
+                encodingMap.set(node.path || node.name, encoding);
+            }
+        }
+
+        const treeMap = buildDocumentTreeMap(nodes, { encodingMap });
         const sqlFileNodes = nodes.filter(
             (node) => node.type === "file" && typeof node.name === "string" && node.name.toLowerCase().endsWith(".sql")
         );
