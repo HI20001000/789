@@ -421,9 +421,11 @@ function buildDocumentTreeMap(nodes, { maxEntries = 800, encodingMap = new Map()
         const icon = node?.type === "dir" ? "📂" : "📄";
         const label = typeof node?.name === "string" && node.name.trim() ? node.name : node?.path || "";
         const encoding = node?.type === "file"
-            ? encodingMap.get(node?.path || node?.name || "") || resolveNodeEncoding(node)
+            ? encodingMap.get(node?.path || node?.name || "") || resolveNodeEncoding(node) || "UTF-8"
             : "";
-        const encodingSuffix = encoding ? ` [${encoding}]` : "";
+        const encodingSuffix = node?.type === "file" && encoding
+            ? `（編碼格式：${encoding}）`
+            : "";
         lines.push(`${indent}${icon} ${label}${encodingSuffix}`.trimEnd());
     }
     return lines.join("\n");
