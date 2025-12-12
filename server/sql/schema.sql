@@ -66,6 +66,30 @@ CREATE TABLE IF NOT EXISTS reports (
     CONSTRAINT fk_reports_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
+-- Document review reports table keeps document checks separate from code review results
+CREATE TABLE IF NOT EXISTS document_reports (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    project_name VARCHAR(255) NOT NULL,
+    project_id VARCHAR(255) DEFAULT '',
+    path VARCHAR(512) NOT NULL,
+    path_hash BINARY(32) AS (UNHEX(SHA2(path, 256))) STORED,
+    report LONGTEXT NOT NULL,
+    chunks_json LONGTEXT NOT NULL,
+    segments_json LONGTEXT NOT NULL,
+    combined_report_json LONGTEXT NULL,
+    static_report_json LONGTEXT NULL,
+    ai_report_json LONGTEXT NULL,
+    conversation_id VARCHAR(255) DEFAULT '',
+    user_id VARCHAR(255) DEFAULT '',
+    generated_at BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uniq_document_reports_name_path_hash (project_name, path_hash),
+    INDEX idx_document_reports_project_name (project_name),
+    INDEX idx_document_reports_project_name_path (project_name, path(191))
+);
+
 -- Settings for rule engine definitions per language
 CREATE TABLE IF NOT EXISTS setting_rules (
     id INT AUTO_INCREMENT PRIMARY KEY,
