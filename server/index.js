@@ -348,6 +348,57 @@ function extractEncodingFromMime(mime) {
     return match?.[1]?.trim() || "";
 }
 
+function detectEncodingFromContent(content) {
+    if (typeof content !== "string" || !content.trim()) return "";
+    try {
+        const buffer = Buffer.from(content, "binary");
+        if (buffer.length >= 4) {
+            const bom32le = buffer[0] === 0xff && buffer[1] === 0xfe && buffer[2] === 0x00 && buffer[3] === 0x00;
+            if (bom32le) return "UTF-32LE";
+            const bom32be = buffer[0] === 0x00 && buffer[1] === 0x00 && buffer[2] === 0xfe && buffer[3] === 0xff;
+            if (bom32be) return "UTF-32BE";
+        }
+        if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+            return "UTF-8-BOM";
+        }
+        if (buffer.length >= 2) {
+            const bom16le = buffer[0] === 0xff && buffer[1] === 0xfe;
+            if (bom16le) return "UTF-16LE";
+            const bom16be = buffer[0] === 0xfe && buffer[1] === 0xff;
+            if (bom16be) return "UTF-16BE";
+        }
+
+        try {
+            new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+            return "UTF-8";
+        } catch (_err) {
+            // not UTF-8
+        }
+
+        try {
+            new TextDecoder("utf-16le", { fatal: true }).decode(buffer);
+            return "UTF-16LE";
+        } catch (_err) {
+            // not UTF-16 LE
+        }
+
+        try {
+            new TextDecoder("utf-16be", { fatal: true }).decode(buffer);
+            return "UTF-16BE";
+        } catch (_err) {
+            // not UTF-16 BE
+        }
+
+        const isAscii = buffer.every((byte) => byte <= 0x7f);
+        if (isAscii) {
+            return "ASCII";
+        }
+    } catch (error) {
+        console.warn("[documents] Failed to detect encoding from content", error);
+    }
+    return "";
+}
+
 function resolveNodeEncoding(node) {
     const encoding = typeof node?.encoding === "string" ? node.encoding.trim() : "";
     if (encoding) return encoding;
@@ -1919,6 +1970,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
         }
 
         const encodingMap = new Map();
+        const fileContentByPath = new Map();
         for (const node of nodes) {
             const encoding = resolveNodeEncoding(node);
             if (encoding && (node?.path || node?.name)) {
@@ -1935,13 +1987,17 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             const placeholders = missingEncodingPaths.map(() => "?").join(",");
             try {
                 const [encodingRows] = await pool.query(
-                    `SELECT path, mime, encoding
+                    `SELECT path, mime, encoding, content
                      FROM project_files
                      WHERE project_id = ? AND path IN (${placeholders})`,
                     [projectId, ...missingEncodingPaths]
                 );
                 for (const row of encodingRows || []) {
-                    const resolvedEncoding = resolveNodeEncoding(row);
+                    if (row?.path && typeof row?.content === "string" && !fileContentByPath.has(row.path)) {
+                        fileContentByPath.set(row.path, row.content);
+                    }
+                    const resolvedEncoding =
+                        resolveNodeEncoding(row) || detectEncodingFromContent(row?.content || "");
                     if (resolvedEncoding && row?.path && !encodingMap.has(row.path)) {
                         encodingMap.set(row.path, resolvedEncoding);
                     }
@@ -1960,29 +2016,40 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             if (sqlPaths.length) {
                 const placeholders = sqlPaths.map(() => "?").join(",");
                 try {
-                    const [fileRows] = await pool.query(
-                        `SELECT path, content
-                         FROM project_files
-                         WHERE project_id = ? AND path IN (${placeholders})`,
-                        [projectId, ...sqlPaths]
-                    );
-                    const contentMap = new Map((fileRows || []).map((row) => [row.path, row.content]));
+                    const missingSqlContent = sqlPaths.filter((path) => !fileContentByPath.has(path));
+                    if (missingSqlContent.length) {
+                        const [fileRows] = await pool.query(
+                            `SELECT path, content
+                             FROM project_files
+                             WHERE project_id = ? AND path IN (${placeholders})`,
+                            [projectId, ...sqlPaths]
+                        );
+                        for (const row of fileRows || []) {
+                            if (row?.path && typeof row?.content === "string" && !fileContentByPath.has(row.path)) {
+                                fileContentByPath.set(row.path, row.content);
+                            }
+                        }
+                    }
                     sqlFilesMeta = sqlFileNodes.map((node) => {
-                        const content = contentMap.get(node.path);
-                        const stored = contentMap.has(node.path);
+                        const content = fileContentByPath.get(node.path);
+                        const stored = fileContentByPath.has(node.path);
                         const hasBom = typeof content === "string" ? content.startsWith("\ufeff") : false;
-                        return { path: node.path, hasBom, stored };
+                        const detected = detectEncodingFromContent(content || "");
+                        return { path: node.path, hasBom, stored, detected };
                     });
                 } catch (error) {
                     console.warn("[documents] Failed to load SQL file content for BOM check", error);
-                    sqlFilesMeta = sqlFileNodes.map((node) => ({ path: node.path, hasBom: false, stored: false }));
+                    sqlFilesMeta = sqlFileNodes.map((node) => ({ path: node.path, hasBom: false, stored: false, detected: "" }));
                 }
             }
         }
 
         for (const meta of sqlFilesMeta) {
             if (!meta?.path || encodingMap.has(meta.path)) continue;
-            if (meta.hasBom) {
+            const detected = typeof meta?.detected === "string" ? meta.detected.trim() : "";
+            if (detected) {
+                encodingMap.set(meta.path, detected);
+            } else if (meta.hasBom) {
                 encodingMap.set(meta.path, "UTF-8-BOM");
             } else if (meta.stored) {
                 encodingMap.set(meta.path, "UTF-8");
