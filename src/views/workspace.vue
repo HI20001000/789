@@ -5312,34 +5312,40 @@ onBeforeUnmount(() => {
                                             <div class="ruleCell" role="columnheader">風險指標</div>
                                             <div class="ruleCell" role="columnheader">操作</div>
                                         </div>
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="rule.description" type="text" class="ruleInput"
-                                                :aria-label="`規則 ${index + 1} 描述`"
-                                                :placeholder="ruleDescriptionPlaceholder" />
+                                        <div v-for="(rule, index) in activeRuleSettings"
+                                            :key="rule.localId || `rule-${index}`" class="ruleRow" role="row">
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="rule.ruleId" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} ID`" placeholder="R-001" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="rule.description" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} 描述`"
+                                                    :placeholder="ruleDescriptionPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <label class="toggle">
+                                                    <input v-model="rule.enabled" type="checkbox" />
+                                                    <span>啟用</span>
+                                                </label>
+                                            </div>
+                                            <div class="ruleCell" role="cell">
+                                                <input v-model="rule.riskIndicator" type="text" class="ruleInput"
+                                                    :aria-label="`規則 ${index + 1} 風險指標`"
+                                                    :placeholder="riskIndicatorPlaceholder" />
+                                            </div>
+                                            <div class="ruleCell ruleCell--actions" role="cell">
+                                                <button type="button" class="btn ghost" @click="removeRuleRow(index)"
+                                                    :disabled="
+                                                        ruleSettingsState.loading ||
+                                                        ruleSettingsState.saving ||
+                                                        aiReviewState.loading ||
+                                                        aiReviewState.saving
+                                                    ">
+                                                    刪除
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div class="ruleCell" role="cell">
-                                            <label class="toggle">
-                                                <input v-model="rule.enabled" type="checkbox" />
-                                                <span>啟用</span>
-                                            </label>
-                                        </div>
-                                        <div class="ruleCell" role="cell">
-                                            <input v-model="rule.riskIndicator" type="text" class="ruleInput"
-                                                :aria-label="`規則 ${index + 1} 風險指標`"
-                                                :placeholder="riskIndicatorPlaceholder" />
-                                        </div>
-                                        <div class="ruleCell ruleCell--actions" role="cell">
-                                            <button type="button" class="btn ghost" @click="removeRuleRow(index)"
-                                                :disabled="ruleSettingsState.loading || ruleSettingsState.saving || aiReviewState.loading || aiReviewState.saving">
-                                                刪除
-                                            </button>
-                                        </div>
-
-                                    </div>
-
-                                    </div>
-
-                                    </div>
 
                                     </div>
 
