@@ -2329,8 +2329,6 @@ const chatWindowStyle = computed(() => ({
     top: `${chatWindowState.y}px`
 }));
 
-const isChatToggleDisabled = computed(() => isChatLocked.value && isChatWindowOpen.value);
-
 function escapeHtml(value) {
     return String(value)
         .replace(/&/g, "&amp;")
@@ -4977,10 +4975,11 @@ function closeChatWindow() {
 }
 
 function toggleChatWindow() {
-    if (isChatWindowOpen.value) return;
-    if (!isChatToggleDisabled.value) {
-        openChatWindow();
+    if (isChatWindowOpen.value) {
+        closeChatWindow();
+        return;
     }
+    openChatWindow();
 }
 
 function ensureChatWindowInView() {
@@ -5179,8 +5178,7 @@ onBeforeUnmount(() => {
                     </svg>
                 </button>
                 <button type="button" class="toolColumn_btn toolColumn_btn--chat" :class="{ active: isChatWindowOpen }"
-                    :disabled="isChatToggleDisabled" @click="toggleChatWindow" :aria-pressed="isChatWindowOpen"
-                    title="Chat AI">
+                    @click="toggleChatWindow" :aria-pressed="isChatWindowOpen" title="Chat AI">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <!-- background stays the same size -->
                         <rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" opacity="0.12" />

@@ -98,6 +98,7 @@ function mapNodeRow(row) {
         size: Number(row.size) || 0,
         lastModified: Number(row.last_modified) || 0,
         mime: row.mime || "",
+        encoding: row.encoding || "",
         isBig: Boolean(row.is_big)
     };
 }
@@ -107,6 +108,7 @@ function mapProjectFileRow(row) {
         projectId: row.project_id,
         path: row.path,
         mime: row.mime || "",
+        encoding: row.encoding || "",
         size: Number(row.size) || 0,
         lastModified: Number(row.last_modified) || 0,
         content: typeof row.content === "string" ? row.content : "",
@@ -340,7 +342,71 @@ function mapDocumentReviewSettingRow(row) {
     };
 }
 
-function buildDocumentTreeMap(nodes, { maxEntries = 800 } = {}) {
+function extractEncodingFromMime(mime) {
+    if (typeof mime !== "string") return "";
+    const match = mime.match(/charset=([^;]+)/i);
+    return match?.[1]?.trim() || "";
+}
+
+function detectEncodingFromContent(content) {
+    if (typeof content !== "string" || !content.trim()) return "";
+    try {
+        const buffer = Buffer.from(content, "binary");
+        if (buffer.length >= 4) {
+            const bom32le = buffer[0] === 0xff && buffer[1] === 0xfe && buffer[2] === 0x00 && buffer[3] === 0x00;
+            if (bom32le) return "UTF-32LE";
+            const bom32be = buffer[0] === 0x00 && buffer[1] === 0x00 && buffer[2] === 0xfe && buffer[3] === 0xff;
+            if (bom32be) return "UTF-32BE";
+        }
+        if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+            return "UTF-8-BOM";
+        }
+        if (buffer.length >= 2) {
+            const bom16le = buffer[0] === 0xff && buffer[1] === 0xfe;
+            if (bom16le) return "UTF-16LE";
+            const bom16be = buffer[0] === 0xfe && buffer[1] === 0xff;
+            if (bom16be) return "UTF-16BE";
+        }
+
+        try {
+            new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+            return "UTF-8";
+        } catch (_err) {
+            // not UTF-8
+        }
+
+        try {
+            new TextDecoder("utf-16le", { fatal: true }).decode(buffer);
+            return "UTF-16LE";
+        } catch (_err) {
+            // not UTF-16 LE
+        }
+
+        try {
+            new TextDecoder("utf-16be", { fatal: true }).decode(buffer);
+            return "UTF-16BE";
+        } catch (_err) {
+            // not UTF-16 BE
+        }
+
+        const isAscii = buffer.every((byte) => byte <= 0x7f);
+        if (isAscii) {
+            return "ASCII";
+        }
+    } catch (error) {
+        console.warn("[documents] Failed to detect encoding from content", error);
+    }
+    return "";
+}
+
+function resolveNodeEncoding(node) {
+    const encoding = typeof node?.encoding === "string" ? node.encoding.trim() : "";
+    if (encoding) return encoding;
+    const charset = extractEncodingFromMime(node?.mime || "");
+    return charset || "";
+}
+
+function buildDocumentTreeMap(nodes, { maxEntries = 800, encodingMap = new Map() } = {}) {
     const sorted = Array.isArray(nodes) ? [...nodes] : [];
     sorted.sort((a, b) => (a?.path || "").localeCompare(b?.path || ""));
     const lines = [];
@@ -354,7 +420,13 @@ function buildDocumentTreeMap(nodes, { maxEntries = 800 } = {}) {
         const indent = depth > 0 ? "  ".repeat(depth) : "";
         const icon = node?.type === "dir" ? "📂" : "📄";
         const label = typeof node?.name === "string" && node.name.trim() ? node.name : node?.path || "";
-        lines.push(`${indent}${icon} ${label}`.trimEnd());
+        const encoding = node?.type === "file"
+            ? encodingMap.get(node?.path || node?.name || "") || resolveNodeEncoding(node) || "UTF-8"
+            : "";
+        const encodingSuffix = node?.type === "file"
+            ? `（編碼格式：${encoding || "UTF-8"}）`
+            : "";
+        lines.push(`${indent}${icon} ${label}${encodingSuffix}`.trimEnd());
     }
     return lines.join("\n");
 }
@@ -1431,7 +1503,7 @@ app.get("/api/projects/:projectId/nodes", async (req, res, next) => {
     try {
         const { projectId } = req.params;
         const [rows] = await pool.query(
-            `SELECT node_key, project_id, type, name, path, parent, size, last_modified, mime, is_big
+            `SELECT node_key, project_id, type, name, path, parent, size, last_modified, mime, encoding, is_big
              FROM nodes
              WHERE project_id = ?
              ORDER BY path ASC`,
@@ -1459,10 +1531,11 @@ async function insertNodes(connection, projectId, nodes) {
                 size: Number(node?.size) || 0,
                 lastModified: Number(node?.lastModified) || 0,
                 mime: typeof node?.mime === "string" ? node.mime : "",
+                encoding: typeof node?.encoding === "string" ? node.encoding : "",
                 isBig: Boolean(node?.isBig)
             };
         });
-        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",");
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",");
         const values = chunk.flatMap((node) => [
             node.key,
             projectId,
@@ -1473,10 +1546,11 @@ async function insertNodes(connection, projectId, nodes) {
             node.size,
             node.lastModified,
             node.mime,
+            node.encoding,
             node.isBig ? 1 : 0
         ]);
         await connection.query(
-            `INSERT INTO nodes (node_key, project_id, type, name, path, parent, size, last_modified, mime, is_big)
+            `INSERT INTO nodes (node_key, project_id, type, name, path, parent, size, last_modified, mime, encoding, is_big)
              VALUES ${placeholders}
              ON DUPLICATE KEY UPDATE
                 project_id = VALUES(project_id),
@@ -1487,6 +1561,7 @@ async function insertNodes(connection, projectId, nodes) {
                 size = VALUES(size),
                 last_modified = VALUES(last_modified),
                 mime = VALUES(mime),
+                encoding = VALUES(encoding),
                 is_big = VALUES(is_big)`,
             values
         );
@@ -1505,6 +1580,7 @@ async function insertProjectFiles(connection, projectId, files) {
                     path,
                     content,
                     mime: typeof file?.mime === "string" ? file.mime : "",
+                    encoding: typeof file?.encoding === "string" ? file.encoding : "",
                     size: Number(file?.size) || 0,
                     lastModified: Number(file?.lastModified) || 0,
                     createdAt: Number(file?.createdAt) || Date.now(),
@@ -1517,11 +1593,12 @@ async function insertProjectFiles(connection, projectId, files) {
             continue;
         }
 
-        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",");
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",");
         const values = chunk.flatMap((file) => [
             projectId,
             file.path,
             file.mime,
+            file.encoding,
             file.size,
             file.lastModified,
             file.content,
@@ -1530,10 +1607,11 @@ async function insertProjectFiles(connection, projectId, files) {
         ]);
 
         await connection.query(
-            `INSERT INTO project_files (project_id, path, mime, size, last_modified, content, created_at, updated_at)
+            `INSERT INTO project_files (project_id, path, mime, encoding, size, last_modified, content, created_at, updated_at)
              VALUES ${placeholders}
              ON DUPLICATE KEY UPDATE
                 mime = VALUES(mime),
+                encoding = VALUES(encoding),
                 size = VALUES(size),
                 last_modified = VALUES(last_modified),
                 content = VALUES(content),
@@ -1598,7 +1676,7 @@ app.get("/api/projects/:projectId/files", async (req, res, next) => {
             return;
         }
         const [rows] = await pool.query(
-            `SELECT project_id, path, mime, size, last_modified, content, created_at, updated_at
+            `SELECT project_id, path, mime, encoding, size, last_modified, content, created_at, updated_at
              FROM project_files
              WHERE project_id = ? AND path = ?
              LIMIT 1`,
@@ -1881,7 +1959,7 @@ app.post("/api/reports/document-review", async (req, res, next) => {
         }
 
         const [nodeRows] = await pool.query(
-            `SELECT node_key, project_id, type, name, path, parent, size, last_modified, mime, is_big
+            `SELECT node_key, project_id, type, name, path, parent, size, last_modified, mime, encoding, is_big
              FROM nodes
              WHERE project_id = ?
              ORDER BY path ASC`,
@@ -1893,7 +1971,44 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             return;
         }
 
-        const treeMap = buildDocumentTreeMap(nodes);
+        const encodingMap = new Map();
+        const fileContentByPath = new Map();
+        for (const node of nodes) {
+            const encoding = resolveNodeEncoding(node);
+            if (encoding && (node?.path || node?.name)) {
+                encodingMap.set(node.path || node.name, encoding);
+            }
+        }
+
+        const missingEncodingPaths = nodes
+            .filter((node) => node.type === "file")
+            .map((node) => node.path || node.name || "")
+            .filter((path) => path && !encodingMap.has(path));
+
+        if (missingEncodingPaths.length) {
+            const placeholders = missingEncodingPaths.map(() => "?").join(",");
+            try {
+                const [encodingRows] = await pool.query(
+                    `SELECT path, mime, encoding, content
+                     FROM project_files
+                     WHERE project_id = ? AND path IN (${placeholders})`,
+                    [projectId, ...missingEncodingPaths]
+                );
+                for (const row of encodingRows || []) {
+                    if (row?.path && typeof row?.content === "string" && !fileContentByPath.has(row.path)) {
+                        fileContentByPath.set(row.path, row.content);
+                    }
+                    const resolvedEncoding =
+                        resolveNodeEncoding(row) || detectEncodingFromContent(row?.content || "");
+                    if (resolvedEncoding && row?.path && !encodingMap.has(row.path)) {
+                        encodingMap.set(row.path, resolvedEncoding);
+                    }
+                }
+            } catch (error) {
+                console.warn("[documents] Failed to load encoding metadata from stored files", error);
+            }
+        }
+
         const sqlFileNodes = nodes.filter(
             (node) => node.type === "file" && typeof node.name === "string" && node.name.toLowerCase().endsWith(".sql")
         );
@@ -1903,29 +2018,59 @@ app.post("/api/reports/document-review", async (req, res, next) => {
             if (sqlPaths.length) {
                 const placeholders = sqlPaths.map(() => "?").join(",");
                 try {
-                    const [fileRows] = await pool.query(
-                        `SELECT path, content
-                         FROM project_files
-                         WHERE project_id = ? AND path IN (${placeholders})`,
-                        [projectId, ...sqlPaths]
-                    );
-                    const contentMap = new Map((fileRows || []).map((row) => [row.path, row.content]));
+                    const missingSqlContent = sqlPaths.filter((path) => !fileContentByPath.has(path));
+                    if (missingSqlContent.length) {
+                        const [fileRows] = await pool.query(
+                            `SELECT path, content
+                             FROM project_files
+                             WHERE project_id = ? AND path IN (${placeholders})`,
+                            [projectId, ...sqlPaths]
+                        );
+                        for (const row of fileRows || []) {
+                            if (row?.path && typeof row?.content === "string" && !fileContentByPath.has(row.path)) {
+                                fileContentByPath.set(row.path, row.content);
+                            }
+                        }
+                    }
                     sqlFilesMeta = sqlFileNodes.map((node) => {
-                        const content = contentMap.get(node.path);
-                        const stored = contentMap.has(node.path);
+                        const content = fileContentByPath.get(node.path);
+                        const stored = fileContentByPath.has(node.path);
                         const hasBom = typeof content === "string" ? content.startsWith("\ufeff") : false;
-                        return { path: node.path, hasBom, stored };
+                        const detected = detectEncodingFromContent(content || "");
+                        return { path: node.path, hasBom, stored, detected };
                     });
                 } catch (error) {
                     console.warn("[documents] Failed to load SQL file content for BOM check", error);
-                    sqlFilesMeta = sqlFileNodes.map((node) => ({ path: node.path, hasBom: false, stored: false }));
+                    sqlFilesMeta = sqlFileNodes.map((node) => ({ path: node.path, hasBom: false, stored: false, detected: "" }));
                 }
             }
         }
 
+        for (const meta of sqlFilesMeta) {
+            if (!meta?.path || encodingMap.has(meta.path)) continue;
+            const detected = typeof meta?.detected === "string" ? meta.detected.trim() : "";
+            if (detected) {
+                encodingMap.set(meta.path, detected);
+            } else if (meta.hasBom) {
+                encodingMap.set(meta.path, "UTF-8-BOM");
+            } else if (meta.stored) {
+                encodingMap.set(meta.path, "UTF-8");
+            }
+        }
+
+        for (const node of nodes) {
+            if (node?.type !== "file") continue;
+            const key = node?.path || node?.name || "";
+            if (!key || encodingMap.has(key)) continue;
+            encodingMap.set(key, "UTF-8");
+        }
+
+        const treeMap = buildDocumentTreeMap(nodes, { encodingMap });
+
         const setting = await loadDocumentReviewSetting();
         const { enabledChecks, snapshot } = buildDocumentStatusSnapshot(nodes, setting.checks, sqlFilesMeta);
-        const checksJson = JSON.stringify(enabledChecks, null, 2);
+        const checksForDify = enabledChecks.map(({ key: _ruleKey, ...rest }) => rest);
+        const checksJson = JSON.stringify(checksForDify, null, 2);
         const statusJson = JSON.stringify(snapshot, null, 2);
         const segmentText = [
             `專案：${resolvedProjectName}`,
